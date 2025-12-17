@@ -1,0 +1,340 @@
+package com.termux.x11.controller.widget;
+
+
+import android.os.Build;
+import android.os.Build.VERSION_CODES;
+
+import android.app.Activity;
+import android.app.Application;
+import android.content.Context;
+import android.content.Intent;
+import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
+import android.graphics.drawable.Drawable;
+import android.os.Bundle;
+import android.preference.PreferenceManager;
+import android.widget.Toast;
+
+import androidx.appcompat.content.res.AppCompatResources;
+
+import com.termux.x11.MainActivity;
+import com.termux.x11.R; // Use Termux X11 resources
+import com.termux.floatball.FloatBallManager;
+import com.termux.floatball.menu.FloatMenuCfg;
+import com.termux.floatball.menu.MenuItem;
+import com.termux.floatball.permission.FloatPermissionManager;
+import com.termux.floatball.utils.DensityUtil;
+import com.termux.floatball.widget.FloatBallCfg;
+
+
+//import com.termux.app.TermuxActivity;
+import com.termux.floatball.FloatBallManager;
+import com.termux.floatball.menu.FloatMenuCfg;
+import com.termux.floatball.menu.MenuItem;
+import com.termux.floatball.permission.FloatPermissionManager;
+import com.termux.floatball.utils.DensityUtil;
+import com.termux.floatball.widget.FloatBallCfg;
+import com.termux.x11.MainActivity;
+
+public class FloatBallMenuClient {
+    private FloatBallManager mFloatballManager;
+    private FloatPermissionManager mFloatPermissionManager;
+    private ActivityLifeCycleListener mActivityLifeCycleListener = new ActivityLifeCycleListener();
+    private int resumed;
+    private MainActivity mMainActivity; // Changed from TermuxActivity
+    private boolean mAppNotOnFront = false;
+    private boolean mShowKeyboard = false;
+    private boolean mLockSlider = false;
+    private boolean mShowTerminal = false;
+    private boolean mShowPreference = false;
+
+    private FloatBallMenuClient() {
+    }
+
+    public FloatBallMenuClient(MainActivity mainActivity) { // Changed parameter type
+        mMainActivity = mainActivity;
+    }
+
+    public void onCreate() {
+        init();
+        mFloatballManager.show();
+        // Set float ball click handler
+        if (mFloatballManager.getMenuItemSize() == 0) {
+            toast(mMainActivity.getString(R.string.add_menu_item));
+        } else {
+            mFloatballManager.setOnFloatBallClickListener(() -> {
+                if (mAppNotOnFront) {
+                    // Bring MainActivity to foreground
+                    PackageManager packageManager = mMainActivity.getPackageManager();
+                    Intent intent = packageManager.getLaunchIntentForPackage(mMainActivity.getPackageName());
+                    if (intent != null) {
+                        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+                        mMainActivity.startActivity(intent);
+                        toast(mMainActivity.getString(R.string.raise_app));
+                    }
+                }
+            });
+        }
+        // Register activity lifecycle callbacks
+        mMainActivity.getApplication().registerActivityLifecycleCallbacks(mActivityLifeCycleListener);
+    }
+
+    public void onAttachedToWindow() {
+        try {
+            mFloatballManager.show();
+            mFloatballManager.onFloatBallClick();
+        } catch (RuntimeException e) {
+            e.printStackTrace();
+            toast(mMainActivity.getString(R.string.apply_display_over_other_app_permission));
+        }
+    }
+
+    public void onDetachedFromWindow() {
+        mFloatballManager.hide();
+    }
+
+    private void init() {
+        // Set up float ball
+        int ballSize = DensityUtil.dip2px(mMainActivity, 40);
+        Drawable ballIcon = AppCompatResources.getDrawable(mMainActivity, R.drawable.icon_float_ball_shape);
+        
+        // Create float ball config
+        FloatBallCfg ballCfg = new FloatBallCfg(ballSize, ballIcon, FloatBallCfg.Gravity.RIGHT_CENTER);
+        ballCfg.setHideHalfLater(true);
+        
+        // Check if global float ball is enabled
+        SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(mMainActivity);
+        boolean floatBallOverOtherApp = preferences.getBoolean("enableGlobalFloatBallMenu", false);
+        
+        Context ctx = mMainActivity;
+        if (floatBallOverOtherApp) {
+            ctx = mMainActivity.getApplicationContext();
+        }
+        
+        // Create float menu config
+        int menuSize = DensityUtil.dip2px(mMainActivity, 110);
+        int menuItemSize = DensityUtil.dip2px(mMainActivity, 20);
+        FloatMenuCfg menuCfg = new FloatMenuCfg(menuSize, menuItemSize);
+        
+        // Create float ball manager
+        mFloatballManager = new FloatBallManager(ctx, ballCfg, menuCfg);
+        addFloatMenuItem();
+        
+        mFloatballManager.setFloatBallOverOtherApp(floatBallOverOtherApp);
+        if (floatBallOverOtherApp) {
+            setFloatPermission();
+        }
+    }
+
+    private void setFloatPermission() {
+        mFloatPermissionManager = new FloatPermissionManager();
+        mFloatballManager.setPermission(new FloatBallManager.IFloatBallPermission() {
+            @Override
+            public boolean onRequestFloatBallPermission() {
+                requestFloatBallPermission(mMainActivity);
+                return true;
+            }
+
+            @Override
+            public boolean hasFloatBallPermission(Context context) {
+                return mFloatPermissionManager.checkPermission(context);
+            }
+
+            @Override
+            public void requestFloatBallPermission(Activity activity) {
+                mFloatPermissionManager.applyPermission(activity);
+            }
+        });
+    }
+
+    public void setTerminalShow(boolean showTerminal) {
+        mShowTerminal = showTerminal;
+    }
+
+    public void setShowPreference(boolean showPreference) {
+        mShowPreference = showPreference;
+    }
+
+    private void toast(String msg) {
+        Toast.makeText(mMainActivity, msg, Toast.LENGTH_SHORT).show();
+    }
+
+    private void addFloatMenuItem() {
+        // Terminal/Home button
+        MenuItem terminalItem = new MenuItem(mMainActivity.getDrawable(R.drawable.icon_menu_start_terminal_shape)) {
+            @Override
+            public void action() {
+                boolean preState = mShowTerminal;
+                mShowTerminal = !mShowTerminal;
+                if (!preState) {
+                    toast(mMainActivity.getString(R.string.open_terminal));
+                    // Bring app to foreground
+                   // mMainActivity.moveTaskToFront(true);
+
+                  } else {
+                    toast(mMainActivity.getString(R.string.hide_terminal));
+                }
+                mFloatballManager.closeMenu();
+            }
+        };
+
+        // Stop/Exit button
+        MenuItem stopItem = new MenuItem(mMainActivity.getDrawable(R.drawable.icon_menu_kill_current_process_shape)) {
+            @Override
+            public void action() {
+                if (mMainActivity.getWinHandler() != null) {
+                    mMainActivity.getWinHandler().stop();
+                    toast(mMainActivity.getString(R.string.terminate_current_process));
+                }
+                mFloatballManager.closeMenu();
+            }
+        };
+
+        // Gamepad/Controller button
+        MenuItem gamePadItem = new MenuItem(mMainActivity.getDrawable(R.drawable.icon_menu_game_pad_shape)) {
+            @Override
+            public void action() {
+                mMainActivity.showInputControlsDialog();
+                mFloatballManager.closeMenu();
+            }
+        };
+
+        // Unlock layout button
+        MenuItem unLockLayoutItem = new MenuItem(mMainActivity.getDrawable(R.drawable.icon_menu_unlock_layout_shape)) {
+            private Drawable unlockedDrawable = AppCompatResources.getDrawable(mMainActivity, R.drawable.icon_menu_unlock_layout_open_shape);
+            private Drawable lockedDrawable = AppCompatResources.getDrawable(mMainActivity, R.drawable.icon_menu_unlock_layout_open_shape);
+            
+            @Override
+            public void action() {
+                mLockSlider = !mLockSlider;
+                if (mLockSlider) {
+                    mDrawable = lockedDrawable;
+                    toast("Layout locked");
+                } else {
+                    mDrawable = unlockedDrawable;
+                    toast(mMainActivity.getString(R.string.unlock_layout));
+                    // Release any locked state
+                    mMainActivity.releaseSlider(true);
+                }
+                mFloatballManager.closeMenu();
+            }
+        };
+
+        // Keyboard button
+        MenuItem keyboardItem = new MenuItem(mMainActivity.getDrawable(R.drawable.icon_menu_show_keyboard_shape)) {
+            private Drawable keyboardOn = AppCompatResources.getDrawable(mMainActivity, R.drawable.icon_menu_show_keyboard_shape);
+            private Drawable keyboardOff = AppCompatResources.getDrawable(mMainActivity, R.drawable.icon_menu_show_keyboard_shape);
+            
+            @Override
+            public void action() {
+                mShowKeyboard = !mShowKeyboard;
+                if (mShowKeyboard) {
+                    mDrawable = keyboardOn;
+                    MainActivity.toggleKeyboardVisibility(mMainActivity);
+                } else {
+                    mDrawable = keyboardOff;
+                    MainActivity.toggleKeyboardVisibility(mMainActivity);
+                }
+                mFloatballManager.closeMenu();
+            }
+        };
+
+        // Task Manager button
+        MenuItem taskManagerItem = new MenuItem(mMainActivity.getDrawable(R.drawable.icon_menu_show_task_manager_shape)) {
+            @Override
+            public void action() {
+                mMainActivity.showProcessManagerDialog();
+                toast("Task Manager");
+                mFloatballManager.closeMenu();
+            }
+        };
+
+        // Settings button
+        MenuItem settingItem = new MenuItem(mMainActivity.getDrawable(R.drawable.icon_menu_show_setting_shape)) {
+            private Drawable settingsOn = AppCompatResources.getDrawable(mMainActivity, R.drawable.icon_menu_show_setting_shape);
+            private Drawable settingsOff = AppCompatResources.getDrawable(mMainActivity, R.drawable.icon_menu_show_setting_shape);
+            
+            @Override
+            public void action() {
+                mShowPreference = !mShowPreference;
+                if (!mShowPreference) {
+                    mDrawable = settingsOff;
+                    mMainActivity.openPreference(true);
+                    toast(mMainActivity.getString(R.string.open_x11_settings));
+                } else {
+                    mDrawable = settingsOn;
+                    mMainActivity.openPreference(false);
+                    toast(mMainActivity.getString(R.string.hide_x11_settings));
+                }
+                mFloatballManager.closeMenu();
+            }
+        };
+
+        // Add all menu items
+        mFloatballManager.addMenuItem(terminalItem)
+            .addMenuItem(stopItem)
+            .addMenuItem(keyboardItem)
+            .addMenuItem(gamePadItem)
+            .addMenuItem(unLockLayoutItem)
+            .addMenuItem(taskManagerItem)
+            .addMenuItem(settingItem)
+            .buildMenu();
+    }
+
+    private void setFloatBallVisible(boolean visible) {
+        if (visible) {
+            mAppNotOnFront = false;
+        } else {
+            mAppNotOnFront = true;
+        }
+    }
+
+    public void onDestroy() {
+        if (mFloatballManager != null) {
+            mFloatballManager.hide();
+        }
+        if (mMainActivity != null) {
+            mMainActivity.getApplication().unregisterActivityLifecycleCallbacks(mActivityLifeCycleListener);
+        }
+    }
+
+    public boolean isGlobalFloatBallMenu() {
+        return mFloatballManager != null && mFloatballManager.isFloatBallOverOtherApp();
+    }
+
+    // Inner class for activity lifecycle
+    public class ActivityLifeCycleListener implements Application.ActivityLifecycleCallbacks {
+        @Override
+        public void onActivityCreated(Activity activity, Bundle savedInstanceState) {}
+
+        @Override
+        public void onActivityStarted(Activity activity) {}
+
+        @Override
+        public void onActivityResumed(Activity activity) {
+            ++resumed;
+            setFloatBallVisible(true);
+        }
+
+        @Override
+        public void onActivityPaused(Activity activity) {
+            --resumed;
+            if (!isApplicationInForeground()) {
+                setFloatBallVisible(false);
+            }
+        }
+
+        @Override
+        public void onActivityStopped(Activity activity) {}
+
+        @Override
+        public void onActivityDestroyed(Activity activity) {}
+
+        @Override
+        public void onActivitySaveInstanceState(Activity activity, Bundle outState) {}
+    }
+
+    private boolean isApplicationInForeground() {
+        return resumed > 0;
+    }
+}

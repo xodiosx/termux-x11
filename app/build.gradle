@@ -41,13 +41,36 @@ android {
 }
 
 dependencies {
-    //noinspection DifferentStdlibGradleVersion
-    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8:2.2.10"
-    implementation 'androidx.lifecycle:lifecycle-viewmodel-ktx:2.9.1'
-    implementation 'androidx.preference:preference:1.2.1'
-    implementation 'com.github.tiann:FreeReflection:3.2.2'
+   // implementation 'me.weishu:free_reflection:3.0.1'
+   implementation 'com.github.tiann:FreeReflection:3.2.2'
+    
+   coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.3'
+  implementation 'com.nineoldandroids:library:2.4.0'
+implementation "com.google.guava:guava:31.1-android"
+ // 
+       implementation project(":terminal-view")
+        implementation project(":termux-shared")
+      //  implementation project(':float-ball')
+    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.9.23"
+    implementation 'androidx.lifecycle:lifecycle-viewmodel-ktx:2.7.0'
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation "androidx.core:core:1.6.0"
+    implementation 'androidx.preference:preference:1.1.1'
+    implementation 'com.google.android.material:material:1.9.0'
+    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+    implementation 'androidx.lifecycle:lifecycle-livedata-ktx:2.6.1'
     compileOnly project(':shell-loader:stub')
+    testImplementation 'junit:junit:4.13.2'
+    androidTestImplementation 'androidx.test.ext:junit:1.1.5'
+    androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
+
+    implementation 'com.google.android.material:material:1.4.0'
+    implementation 'com.github.luben:zstd-jni:1.5.2-3@aar'
+    implementation 'org.tukaani:xz:1.7'
+    implementation 'org.apache.commons:commons-compress:1.20'
+
 }
+
 
 afterEvaluate {
     publishing {

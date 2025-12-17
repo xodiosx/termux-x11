@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen 
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <!-- Original Termux X11 Settings -->
+    <PreferenceCategory android:title="Settings">
+        <Preference
+            android:key="full_settings"
+            android:title="Termux X11 Settings"
+            android:icon="@android:drawable/ic_menu_preferences"
+            android:summary="Open x11 settings interface" />
+    </PreferenceCategory>
+
+    <!-- Quick Actions -->
+    <PreferenceCategory android:title="Quick Actions">
+        <Preference
+            android:key="open_keyboard"
+            android:title="Open Keyboard"
+            android:icon="@android:drawable/ic_menu_set_as"
+            android:summary="Toggle software keyboard" />
+            
+        <Preference
+            android:key="select_controller"
+            android:title="@string/select_controller"
+            android:icon="@android:drawable/ic_menu_directions"
+            android:summary="@string/select_controller_summary" />
+            
+        <Preference
+            android:key="open_progress_manager"
+            android:title="@string/progress_manager"
+            android:icon="@android:drawable/ic_menu_manage"
+            android:summary="View running processes" />
+            
+
+            
+        <Preference
+            android:key="start_debug"
+            android:title="Start Debug"
+            android:icon="@android:drawable/ic_menu_info_details"
+            android:summary="Start debugging loga will be saved App's Data folder" />
+    </PreferenceCategory>
+
+    <!-- Info & Actions -->
+    <PreferenceCategory android:title="Information">
+        <Preference
+            android:key="help"
+            android:title="Help"
+            android:icon="@android:drawable/ic_menu_help"
+            android:summary="Open help GitHub" />
+            
+        <Preference
+            android:key="exit"
+            android:title="Exit"
+            android:icon="@android:drawable/ic_menu_close_clear_cancel"
+            android:summary="Exit the application" />
+    </PreferenceCategory>
+
+</PreferenceScreen>

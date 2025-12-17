@@ -48,8 +48,8 @@ dependencies {
   implementation 'com.nineoldandroids:library:2.4.0'
 implementation "com.google.guava:guava:31.1-android"
  // 
-       implementation project(":terminal-view")
-        implementation project(":termux-shared")
+       //implementation project(":terminal-view")
+     //   implementation project(":termux-shared")
       //  implementation project(':float-ball')
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.9.23"
     implementation 'androidx.lifecycle:lifecycle-viewmodel-ktx:2.7.0'

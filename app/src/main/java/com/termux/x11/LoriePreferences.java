@@ -1,9 +1,6 @@
 package com.termux.x11;
 
 
-
-
-
 import android.content.Intent;
 import android.graphics.Color;
 import android.view.MenuItem;
@@ -322,6 +319,7 @@ private void showSettingsUI() {
                 
 //LogcatLogger.start(this, "termux.x11");
 /*
+LogcatLogger.start(this);
 getSupportFragmentManager().beginTransaction()
         .replace(android.R.id.content, new LoriePreferenceFragment(null))
         .commit();
@@ -358,13 +356,23 @@ getSupportFragmentManager().beginTransaction()
         unregisterReceiver(receiver);
     }
 
+// LoriePreferences.java
+protected void requestClosePreferencesDrawer() {
+    // default = do nothing
+}
+
+
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
         int id = item.getItemId();
 
         if (id == android.R.id.home) {
             if (getSupportFragmentManager().getBackStackEntryCount() == 0)
-                finish();
+             //   finish();
+//MainActivity activity = MainActivity.getInstance();
+
+requestClosePreferencesDrawer();
+
             else
                 onBackPressed();
 

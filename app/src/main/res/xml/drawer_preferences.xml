@@ -7,7 +7,7 @@
     <PreferenceCategory android:title="Settings">
         <Preference
             android:key="full_settings"
-            android:title="Termux X11 Settings"
+            android:title="@string/notification_open_preferences"
             android:icon="@android:drawable/ic_menu_preferences"
             android:summary="Open x11 settings interface" />
     </PreferenceCategory>
@@ -16,7 +16,7 @@
     <PreferenceCategory android:title="Quick Actions">
         <Preference
             android:key="open_keyboard"
-            android:title="Open Keyboard"
+            android:title="@string/open_keyboard_btn"
             android:icon="@android:drawable/ic_menu_set_as"
             android:summary="Toggle software keyboard" />
             
@@ -26,17 +26,12 @@
             android:icon="@android:drawable/ic_menu_directions"
             android:summary="@string/select_controller_summary" />
             
-        <Preference
-            android:key="open_progress_manager"
-            android:title="@string/progress_manager"
-            android:icon="@android:drawable/ic_menu_manage"
-            android:summary="View running processes" />
-            
+        
 
             
         <Preference
             android:key="start_debug"
-            android:title="Start Debug"
+            android:title="@string/log_level_debug"
             android:icon="@android:drawable/ic_menu_info_details"
             android:summary="Start debugging loga will be saved App's Data folder" />
     </PreferenceCategory>
@@ -45,13 +40,13 @@
     <PreferenceCategory android:title="Information">
         <Preference
             android:key="help"
-            android:title="Help"
+            android:title="@string/help_button_text"
             android:icon="@android:drawable/ic_menu_help"
             android:summary="Open help GitHub" />
             
         <Preference
             android:key="exit"
-            android:title="Exit"
+            android:title="@string/exit_button_exit_app"
             android:icon="@android:drawable/ic_menu_close_clear_cancel"
             android:summary="Exit the application" />
     </PreferenceCategory>

@@ -507,7 +507,8 @@ public void stopDesktop() {
 private void startDebugMode() {
     // Start debug mode
     Toast.makeText(this, "Debug mode started", Toast.LENGTH_SHORT).show();
-    LogcatLogger.start(this, "termux.x11");
+ //   LogcatLogger.start(this, "termux.x11");
+ LogcatLogger.start(this);
 }
 
 
@@ -531,22 +532,34 @@ private void showPreferencesInDrawer() {
 @Override
 public void onBackPressed() {
     if (drawerLayout.isDrawerOpen(GravityCompat.START)) {
-        // Close the drawer when back is pressed
+        // Close drawer and lock it again
         drawerLayout.closeDrawer(GravityCompat.START);
         
-        // Hide the preferences container when drawer is closed
-        FrameLayout prefContainer = findViewById(R.id.preferences_container);
-        prefContainer.setVisibility(View.GONE);
+        // Re-lock the drawer after closing
+        drawerLayout.postDelayed(() -> {
+            drawerLayout.setDrawerLockMode(DrawerLayout.LOCK_MODE_LOCKED_CLOSED);
+        }, 100);
         
-        // Remove fragment from container
-        androidx.fragment.app.Fragment fragment = getSupportFragmentManager().findFragmentById(R.id.preferences_container);
-        if (fragment != null) {
-            getSupportFragmentManager().beginTransaction()
-                .remove(fragment)
-                .commit();
+        // Remove fragment
+
+        
+        FrameLayout prefContainer = findViewById(R.id.preferences_container);
+        if (prefContainer != null) {
+            prefContainer.removeAllViews();
+            prefContainer.setVisibility(View.GONE);
+        }
+        
+        // Give focus back to LorieView
+        LorieView lorie = getLorieView();
+        if (lorie != null) {
+            lorie.requestFocus();
         }
     } else {
-        super.onBackPressed();
+    drawerLayout.setDrawerLockMode(DrawerLayout.LOCK_MODE_UNLOCKED);
+            showPreferencesInDrawer();
+            drawerLayout.openDrawer(GravityCompat.START);
+        // If drawer is closed and locked, do normal back press
+     //   super.onBackPressed();
     }
 }
 
@@ -570,6 +583,54 @@ private void exitAppCompletely() {
     // Optional: terminate process
     System.exit(0);
 }
+
+//// touch fix
+@Override
+public boolean dispatchTouchEvent(MotionEvent ev) {
+    Log.d("MainActivity", "dispatchTouchEvent - Action: " + 
+          MotionEvent.actionToString(ev.getAction()));
+    
+    // Don't handle touches when drawer is open
+    if (drawerLayout != null && drawerLayout.isDrawerOpen(GravityCompat.START)) {
+        return super.dispatchTouchEvent(ev);
+    }
+    
+    // If input controls are visible and have a profile, let them try to handle it first
+    if (inputControlsView != null && 
+        inputControlsView.getVisibility() == View.VISIBLE &&
+        inputControlsView.getProfile() != null) {
+        
+        // Check if touch is within input controls bounds
+        int[] location = new int[2];
+        inputControlsView.getLocationOnScreen(location);
+        
+        float x = ev.getRawX();
+        float y = ev.getRawY();
+        
+        if (x >= location[0] && x <= location[0] + inputControlsView.getWidth() &&
+            y >= location[1] && y <= location[1] + inputControlsView.getHeight()) {
+            
+            // Convert to view coordinates
+            float viewX = x - location[0];
+            float viewY = y - location[1];
+            
+            MotionEvent adjustedEvent = MotionEvent.obtain(ev);
+            adjustedEvent.setLocation(viewX, viewY);
+            
+            boolean handled = inputControlsView.handleTouchEvent(adjustedEvent);
+            adjustedEvent.recycle();
+            
+            if (handled) {
+                Log.d("MainActivity", "Input controls handled touch in dispatchTouchEvent");
+                return true;
+            }
+        }
+    }
+    
+    // If not handled by input controls, pass to normal touch handling
+    return super.dispatchTouchEvent(ev);
+}
+
 
 
         @Override
@@ -599,35 +660,7 @@ lorieContentView = findViewById(R.id.id_display_window);
         oldFullscreen = prefs.fullscreen.get();
         oldHideCutout = prefs.hideCutout.get();
 
-       // prefs.get().registerOnSharedPreferenceChangeListener(preferencesChangedListener);
-    //    getWindow().setFlags(FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS | FLAG_KEEP_SCREEN_ON | FLAG_TRANSLUCENT_STATUS, 0);
-
-//        preferences.registerOnSharedPreferenceChangeListener((sharedPreferences, key) -> onPreferencesChanged(key));
-        //   lorie
-        
-            /*    findViewById(R.id.preferences_button).setOnClickListener((l) -> {
-           if (null != termuxActivityListener) {
-                termuxActivityListener.onX11PreferenceSwitchChange(true);
-            }
-        });
-     // findViewById(R.id.preferences_button).setOnClickListener((l) -> startActivity(new Intent(this, LoriePreferences.class) {{ setAction(Intent.ACTION_MAIN); }}));
-     //   findViewById(R.id.help_button).setOnClickListener((l) -> startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/termux/termux-x11/blob/master/README.md#running-graphical-applications"))));
-        
- /*    findViewById(R.id.preferences_button).setOnClickListener((l) -> {
-    // Show preference fragment directly since we're already a preference activity
-    getSupportFragmentManager().beginTransaction()
-        .replace(android.R.id.content, new LoriePreferenceFragment(null))
-     
-        .addToBackStack(null)
-        .commit();
-});
-
-// In MainActivity.java, find the preferences button click listener:
-findViewById(R.id.preferences_button).setOnClickListener((l) -> {
-    startActivity(new Intent(MainActivity.this, LoriePreferences.class));
-});*/
- // findViewById(R.id.preferences_button).setOnClickListener((l) -> startActivity(new Intent(this, LoriePreferences.class) {{ setAction(Intent.ACTION_MAIN); }}));
-// In MainActivity's onCreate or setupMainUI method:
+      
 // Set up the preferences button to open the drawer
         findViewById(R.id.preferences_button).setOnClickListener(v -> {
         if (drawerLayout.isDrawerOpen(GravityCompat.START)) {
@@ -721,11 +754,149 @@ lorieView.setOnCapturedPointerListener((v, e) -> mInputHandler.handleTouchEvent(
 //lorieView.setOnHoverListener((v, e) -> mInputHandler.handleTouchEvent(lorieView, lorieView, e));
 // ===================================================
         
-  ///////////      
+  ///////////     
+  
+   // These will be handled by setupTouchHandlingFix()
+// Keep only the captured pointer listener for special cases
+lorieView.setOnCapturedPointerListener((v, e) -> {
+    if (drawerLayout != null && drawerLayout.isDrawerOpen(GravityCompat.START)) {
+        return false;
+    }
+    return mInputHandler.handleTouchEvent(lorieView, lorieView, e);
+});
+
+
+
+    // Clear existing listeners to avoid conflicts
+    lorieView.setOnTouchListener(null);
+    lorieParent.setOnTouchListener(null);
+    if (frm != null) {
+        frm.setOnTouchListener(null);
+    }
+    
+    // Set up proper touch handling on the FrameLayout
+    frm.setOnTouchListener(new View.OnTouchListener() {
+        @Override
+        public boolean onTouch(View v, MotionEvent event) {
+            Log.d("TouchFix", "FrameLayout touch - Action: " + 
+                  MotionEvent.actionToString(event.getAction()) +
+                  " at (" + event.getX() + ", " + event.getY() + ")");
+            
+            // Don't handle touches when drawer is open
+            if (drawerLayout != null && drawerLayout.isDrawerOpen(GravityCompat.START)) {
+                return false;
+            }
+            
+            // If input controls are visible and should handle this touch
+            if (inputControlsView != null && 
+                inputControlsView.getVisibility() == View.VISIBLE &&
+                inputControlsView.getProfile() != null) {
+                
+                // Get locations of views for coordinate conversion
+                int[] viewLocation = new int[2];
+                inputControlsView.getLocationOnScreen(viewLocation);
+                int[] frameLocation = new int[2];
+                frm.getLocationOnScreen(frameLocation);
+                
+                // Calculate adjusted coordinates
+                float x = event.getX() - (viewLocation[0] - frameLocation[0]);
+                float y = event.getY() - (viewLocation[1] - frameLocation[1]);
+                
+                // Create adjusted event
+                MotionEvent adjustedEvent = MotionEvent.obtain(event);
+                adjustedEvent.setLocation(x, y);
+                
+                // Let input controls try to handle it
+                boolean handled = inputControlsView.handleTouchEvent(adjustedEvent);
+                adjustedEvent.recycle();
+                
+                if (handled) {
+                    Log.d("TouchFix", "Input controls handled touch");
+                    return true;
+                }
+            }
+            
+            // If not handled by input controls, pass to LorieView
+            if (mInputHandler != null && lorieView != null) {
+                return mInputHandler.handleTouchEvent(lorieView, lorieView, event);
+            }
+            
+            return false;
+        }
+    });
+    
+    // Set up direct touch handling for LorieView
+    lorieView.setOnTouchListener(new View.OnTouchListener() {
+        @Override
+        public boolean onTouch(View v, MotionEvent event) {
+            Log.d("TouchFix", "LorieView direct touch - Action: " + 
+                  MotionEvent.actionToString(event.getAction()));
+            
+            // Don't handle touches when drawer is open
+            if (drawerLayout != null && drawerLayout.isDrawerOpen(GravityCompat.START)) {
+                return false;
+            }
+            
+            // If input controls are visible, let frame layout handle it
+            if (inputControlsView != null && 
+                inputControlsView.getVisibility() == View.VISIBLE &&
+                inputControlsView.getProfile() != null) {
+                return false;
+            }
+            
+            // Handle normal LorieView touch
+            if (mInputHandler != null) {
+                return mInputHandler.handleTouchEvent(v, v, event);
+            }
+            return false;
+        }
+    });
+    
+    // Set up hover listener for mouse support
+    lorieView.setOnHoverListener(new View.OnHoverListener() {
+        @Override
+        public boolean onHover(View v, MotionEvent event) {
+            if (drawerLayout != null && drawerLayout.isDrawerOpen(GravityCompat.START)) {
+                return false;
+            }
+            
+            if (mInputHandler != null) {
+                return mInputHandler.handleTouchEvent(v, v, event);
+            }
+            return false;
+        }
+    });
+
+     
+  /*     // Set up basic touch listeners - let dispatchTouchEvent handle the complex routing
+lorieParent.setOnTouchListener((v, event) -> {
+    // Don't handle touches when drawer is open
+    if (drawerLayout != null && drawerLayout.isDrawerOpen(GravityCompat.START)) {
+        return false;
+    }
+    
+    // If input controls are visible, let dispatchTouchEvent handle it
+    if (inputControlsView != null && 
+        inputControlsView.getVisibility() == View.VISIBLE &&
+        inputControlsView.getProfile() != null) {
+        return false;
+    }
+    
+    // Otherwise handle normal touch
+    return mInputHandler.handleTouchEvent(lorieView, lorieView, event);
+});
+
+lorieView.setOnHoverListener((v, e) -> {
+    if (drawerLayout != null && drawerLayout.isDrawerOpen(GravityCompat.START)) {
+        return false;
+    }
+    return mInputHandler.handleTouchEvent(lorieView, lorieView, e);
+});
         
+ */       
         
-        lorieParent.setOnTouchListener((v, event) -> true);
-        lorieView.setOnHoverListener((v, e) -> mInputHandler.handleTouchEvent(lorieParent, lorieView, e));
+//        lorieParent.setOnTouchListener((v, event) -> true);
+//        lorieView.setOnHoverListener((v, e) -> mInputHandler.handleTouchEvent(lorieParent, lorieView, e));
         
     lorieView.setOnGenericMotionListener((v, e) -> {
     if (!isIgnoredDevice(e.getDevice()) && isGamepadConnected() && (e.getSource() & InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK) {
@@ -1649,10 +1820,12 @@ public static class DrawerPreferenceFragment extends PreferenceFragmentCompat
                 return true;
                 
             case "open_keyboard":
+            activity.drawerLayout.closeDrawer(GravityCompat.START);
                 MainActivity.toggleKeyboardVisibility(activity);
                 return true;
                 
             case "select_controller":
+            activity.drawerLayout.closeDrawer(GravityCompat.START);
                 activity.showInputControlsDialog();
                 return true;
                 
@@ -1669,6 +1842,7 @@ public static class DrawerPreferenceFragment extends PreferenceFragmentCompat
                 return true;
                 
             case "start_debug":
+            activity.drawerLayout.closeDrawer(GravityCompat.START);
                 activity.startDebugMode();
                 return true;
                 

@@ -1,9 +1,9 @@
 package com.termux.x11;
 
-
 import android.content.Context;
 import android.os.Build;
 import android.os.Environment;
+import android.os.Process;   // Android Process (PID)
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -13,16 +13,16 @@ import java.io.InputStreamReader;
 public class LogcatLogger {
 
     private static Thread loggerThread;
-    private static boolean isRunning = false;
+    private static boolean running = false;
 
-    public static void start(Context context, String filterTag) {
+    public static void start(Context context) {
+        if (running) return;
+        running = true;
 
-        if (isRunning) return;  // prevent multiple threads
-        isRunning = true;
+        int myPid = Process.myPid(); // android.os.Process
 
         loggerThread = new Thread(() -> {
             try {
-                // Determine directory
                 File dir;
                 if (Build.VERSION.SDK_INT >= 29) {
                     dir = new File(context.getExternalFilesDir(null), "logs");
@@ -35,21 +35,19 @@ public class LogcatLogger {
                 File logFile = new File(dir, "app.log");
                 FileWriter writer = new FileWriter(logFile, true);
 
-                // Clear old logs (optional)
                 Runtime.getRuntime().exec("logcat -c");
 
-                // Start reading logs
-                Process process = Runtime.getRuntime().exec("logcat");
+                // ⚠ IMPORTANT: java.lang.Process (fully qualified)
+                java.lang.Process logcatProcess =
+                        Runtime.getRuntime().exec(new String[]{"logcat", "-v", "time"});
 
                 BufferedReader reader = new BufferedReader(
-                        new InputStreamReader(process.getInputStream())
+                        new InputStreamReader(logcatProcess.getInputStream())
                 );
 
                 String line;
-                while (isRunning && (line = reader.readLine()) != null) {
-
-                    // Tag filtering
-                    if (filterTag == null || line.contains(filterTag)) {
+                while (running && (line = reader.readLine()) != null) {
+                    if (line.contains(String.valueOf(myPid))) {
                         writer.write(line + "\n");
                         writer.flush();
                     }
@@ -66,7 +64,7 @@ public class LogcatLogger {
     }
 
     public static void stop() {
-        isRunning = false;
+        running = false;
         if (loggerThread != null) {
             loggerThread.interrupt();
             loggerThread = null;

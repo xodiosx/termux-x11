@@ -566,24 +566,40 @@ public void onBackPressed() {
 
 public void prepareToExit() {
     Log.d("MainActivity", "prepareToExit called from notification");
-    exitAppCompletely();
+    
+    // Run on UI thread to ensure proper execution
+    runOnUiThread(() -> {
+        try {
+            // 1. Stop any services first
+            stopDesktop();
+            
+            // 2. Cancel notification
+            if (mNotificationManager != null) {
+                mNotificationManager.cancel(mNotificationId);
+            }
+            
+            // 3. Disconnect X11 connection
+            if (LorieView.connected()) {
+                LorieView.connect(-1); // This should disconnect
+            }
+            
+            // 4. Close activity if it's still valid
+            if (!isFinishing() && !isDestroyed()) {
+                finish();
+            }
+            
+            // 5. Exit process completely
+            handler.postDelayed(() -> {
+                System.exit(0);
+            }, 100);
+            
+        } catch (Exception e) {
+            Log.e("MainActivity", "Error in prepareToExit", e);
+            // Fallback: just kill the process
+            android.os.Process.killProcess(android.os.Process.myPid());
+        }
+    });
 }
-
-private void exitAppCompletely() {
-    Log.d("MainActivity", "Exiting app completely");
-    
-    // Cancel notification
-    if (mNotificationManager != null) {
-        mNotificationManager.cancel(mNotificationId);
-    }
-    
-    // Close all activities
-    finishAffinity();
-    
-    // Optional: terminate process
-    System.exit(0);
-}
-
 //// touch fix
 @Override
 public boolean dispatchTouchEvent(MotionEvent ev) {

@@ -33,7 +33,7 @@
             android:key="start_debug"
             android:title="@string/log_level_debug"
             android:icon="@android:drawable/ic_menu_info_details"
-            android:summary="Start debugging loga will be saved App's Data folder" />
+            android:summary="Start debugging-logs saved to App's Data folder" />
     </PreferenceCategory>
 
     <!-- Info & Actions -->

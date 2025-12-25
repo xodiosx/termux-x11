@@ -529,6 +529,8 @@ private void showPreferencesInDrawer() {
     }
 }
 // Update onBackPressed to handle drawer navigation
+private long backPressedTime = 0;
+
 @Override
 public void onBackPressed() {
     if (drawerLayout.isDrawerOpen(GravityCompat.START)) {
@@ -541,8 +543,6 @@ public void onBackPressed() {
         }, 100);
         
         // Remove fragment
-
-        
         FrameLayout prefContainer = findViewById(R.id.preferences_container);
         if (prefContainer != null) {
             prefContainer.removeAllViews();
@@ -558,11 +558,16 @@ public void onBackPressed() {
     drawerLayout.setDrawerLockMode(DrawerLayout.LOCK_MODE_UNLOCKED);
             showPreferencesInDrawer();
             drawerLayout.openDrawer(GravityCompat.START);
-        // If drawer is closed and locked, do normal back press
-     //   super.onBackPressed();
+        // Double tap to exit
+        if (backPressedTime + 2000 > System.currentTimeMillis()) {
+            //super.onBackPressed();
+            finish();
+        } else {
+            Toast.makeText(this, "Press back 2 times to exit↩️", Toast.LENGTH_SHORT).show();
+        }
+        backPressedTime = System.currentTimeMillis();
     }
 }
-
 
 public void prepareToExit() {
     Log.d("MainActivity", "prepareToExit called from notification");
@@ -676,7 +681,13 @@ lorieContentView = findViewById(R.id.id_display_window);
         oldFullscreen = prefs.fullscreen.get();
         oldHideCutout = prefs.hideCutout.get();
 
-      
+        //  if (drawerLayout.isDrawerOpen(GravityCompat.START)) {
+        // 
+      //  drawerLayout.closeDrawer(GravityCompat.START);
+        showPreferencesInDrawer();
+
+
+
 // Set up the preferences button to open the drawer
         findViewById(R.id.preferences_button).setOnClickListener(v -> {
         if (drawerLayout.isDrawerOpen(GravityCompat.START)) {
@@ -710,7 +721,7 @@ if (e.getDevice() == null) {
                         closeSoftKeyboard();
                     }
                     
-                    return true;
+                    return false;
                 }
                 
             }

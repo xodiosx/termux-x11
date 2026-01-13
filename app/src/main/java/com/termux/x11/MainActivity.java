@@ -298,7 +298,8 @@ return findViewById(R.id.display_terminal_toolbar_view_pager);
                     Log.e("MainActivity", "Something went wrong while we extracted connection details from binder.", e);
                 }
             } else if (ACTION_STOP.equals(intent.getAction())) {
-                finishAffinity();
+           //     finishAffinity();
+               prepareToExit();
             } else if (ACTION_PREFERENCES_CHANGED.equals(intent.getAction())) {
                 Log.d("MainActivity", "preference: " + intent.getStringExtra("key"));
                 if (!"additionalKbdVisible".equals(intent.getStringExtra("key")))
@@ -385,7 +386,9 @@ return findViewById(R.id.display_terminal_toolbar_view_pager);
             if (LorieView.connected()) {
                 // Check what method LorieView has for disconnecting
                 // If there's no disconnect method, we'll just update the UI
-            }
+          LorieView.connect(-1);
+            
+                }
             
             // Update UI to show disconnected state
             clientConnectedStateChanged();
@@ -394,6 +397,8 @@ return findViewById(R.id.display_terminal_toolbar_view_pager);
             Toast.makeText(MainActivity.this, "Desktop stopped", Toast.LENGTH_SHORT).show();
         }
 
+
+ 
         @Override
         public void openSoftwareKeyboard() {
             // Toggle keyboard visibility
@@ -438,7 +443,9 @@ return findViewById(R.id.display_terminal_toolbar_view_pager);
         @Override
         public void onExitApp() {
             // Exit the app
-            finishAffinity();
+            System.exit(0);
+         finish();
+       //     finishAffinity();
         }
     };
 }
@@ -504,6 +511,43 @@ public void stopDesktop() {
 }
 
 
+// Add this method to MainActivity class
+public void killWineProcesses() {
+    try {
+        // Execute pkill -f wine command
+        Process process = Runtime.getRuntime().exec(new String[]{"sh", "-c", "pkill -f wine"});
+        
+        // Wait for the command to complete
+        int exitCode = process.waitFor();
+        
+        // Also kill winhandler.exe specifically
+        Process process2 = Runtime.getRuntime().exec(new String[]{"sh", "-c", "pkill -f winhandler.exe"});
+        process2.waitFor();
+        
+        // Kill any remaining wine processes with -9 if needed
+        if (exitCode != 0) {
+            // pkill returns non-zero if no processes were found, which is OK
+            Log.d("MainActivity", "No wine processes found or couldn't kill them");
+        } else {
+            Log.d("MainActivity", "Successfully killed wine processes");
+        }
+        
+        // Additional cleanup: kill any remaining X11 processes
+        try {
+            Runtime.getRuntime().exec(new String[]{"sh", "-c", "pkill -f Xvfb"});
+        } catch (Exception e) {
+            // Ignore
+        }
+        
+    } catch (Exception e) {
+        Log.e("MainActivity", "Error killing wine processes", e);
+        // FIX: Use MainActivity.this instead of just 'this'
+        Toast.makeText(MainActivity.this, "Error killing wine processes: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+    }
+}
+
+
+
 private void startDebugMode() {
     // Start debug mode
     Toast.makeText(this, "Debug mode started", Toast.LENGTH_SHORT).show();
@@ -561,9 +605,11 @@ public void onBackPressed() {
         // Double tap to exit
         if (backPressedTime + 2000 > System.currentTimeMillis()) {
             //super.onBackPressed();
+
+
             finish();
         } else {
-            Toast.makeText(this, "Press back 2 times to exit↩️", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "Press 2 times to exit", Toast.LENGTH_SHORT).show();
         }
         backPressedTime = System.currentTimeMillis();
     }
@@ -595,7 +641,9 @@ public void prepareToExit() {
             
             // 5. Exit process completely
             handler.postDelayed(() -> {
-                System.exit(0);
+               
+          //      System.exit(0);
+         finish();
             }, 100);
             
         } catch (Exception e) {
@@ -1879,8 +1927,35 @@ public static class DrawerPreferenceFragment extends PreferenceFragmentCompat
                 return true;
                 
             case "exit":
-                activity.finish();
-                return true;
+    // Check if wine is running first
+    boolean isWineRunning = activity.isWineRunning();
+    
+    AlertDialog.Builder builder = new AlertDialog.Builder(activity)
+        .setTitle(isWineRunning ? "⚠️ Wine is Running" : "Exit Application")
+        .setPositiveButton("Exit", (dialog, which) -> {
+            if (activity != null) {
+                activity.killWineProcesses();
+                activity.prepareToExit();
+            }
+        })
+        .setNegativeButton("Cancel", (dialog, which) -> dialog.dismiss());
+    
+    if (isWineRunning) {
+        builder.setMessage("Wine processes are currently running!\n\nIf you exit now, all Wine applications will be closed.\n\nAre you sure you want to exit?")
+               .setNeutralButton("Just Exit App", (dialog, which) -> {
+                   // Exit without killing wine
+                   if (activity != null) {
+                       activity.prepareToExit();
+                   }
+               });
+    } else {
+        builder.setMessage("❌Do you want to exit the application?🛑");
+    }
+    
+    builder.show();
+    activity.drawerLayout.closeDrawer(GravityCompat.START);
+    return true;
+    
         }
         
         return false;

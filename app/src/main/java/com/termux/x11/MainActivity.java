@@ -1845,126 +1845,155 @@ mNotificationManager = (NotificationManager) getSystemService(Context.NOTIFICATI
     
     // Add this class inside MainActivity.java (but outside MainActivity class)
 public static class DrawerPreferenceFragment extends PreferenceFragmentCompat 
-        implements Preference.OnPreferenceClickListener {
-    
+        implements Preference.OnPreferenceClickListener, Preference.OnPreferenceChangeListener {
+
     private MainActivity activity;
-    
+
     @Override
     public void onAttach(@NonNull Context context) {
         super.onAttach(context);
         activity = (MainActivity) context;
     }
-    
+
     @Override
     public void onCreatePreferences(Bundle savedInstanceState, String rootKey) {
         setPreferencesFromResource(R.xml.drawer_preferences, rootKey);
-        
-        // Set click listeners for all preferences
+
+        // Set listeners for all preferences
         PreferenceScreen screen = getPreferenceScreen();
         for (int i = 0; i < screen.getPreferenceCount(); i++) {
             Preference p = screen.getPreference(i);
-            
-            // For category headers, iterate through their children
             if (p instanceof PreferenceCategory) {
                 PreferenceCategory category = (PreferenceCategory) p;
                 for (int j = 0; j < category.getPreferenceCount(); j++) {
                     Preference child = category.getPreference(j);
                     child.setOnPreferenceClickListener(this);
+                    child.setOnPreferenceChangeListener(this);
                 }
             } else {
                 p.setOnPreferenceClickListener(this);
+                p.setOnPreferenceChangeListener(this);
             }
         }
+
+        // Sync HUD switch with actual service state (optional)
+        SwitchPreferenceCompat hudSwitch = findPreference("hud_enabled");
+        if (hudSwitch != null) {
+            // You could check if HudService is running and set the switch accordingly
+            // This requires a way to query the service, e.g., a static boolean in HudService
+            // hudSwitch.setChecked(HudService.isRunning());
+        }
     }
-    
+
     @Override
     public boolean onPreferenceClick(Preference preference) {
         String key = preference.getKey();
-        
-        if (key == null) {
-            return false;
-        }
-        
+        if (key == null) return false;
+
         switch (key) {
             case "full_settings":
-                // Open the original Termux X11 settings activity
                 Intent settingsIntent = new Intent(activity, LoriePreferences.class);
                 activity.startActivity(settingsIntent);
-                // Close drawer after opening settings
                 activity.drawerLayout.closeDrawer(GravityCompat.START);
                 return true;
-                
+
             case "open_keyboard":
-            activity.drawerLayout.closeDrawer(GravityCompat.START);
+                activity.drawerLayout.closeDrawer(GravityCompat.START);
                 MainActivity.toggleKeyboardVisibility(activity);
                 return true;
-                
+
             case "select_controller":
-            activity.drawerLayout.closeDrawer(GravityCompat.START);
+                activity.drawerLayout.closeDrawer(GravityCompat.START);
                 activity.showInputControlsDialog();
                 return true;
-                
+
             case "open_progress_manager":
                 activity.showProcessManagerDialog();
                 return true;
-                
+
             case "install_x11_server_bridge":
                 activity.installX11ServerBridge();
                 return true;
-                
+
             case "stop_desktop":
                 activity.stopDesktop();
                 return true;
-                
+
             case "start_debug":
-            activity.drawerLayout.closeDrawer(GravityCompat.START);
+                activity.drawerLayout.closeDrawer(GravityCompat.START);
                 activity.startDebugMode();
                 return true;
-                
+
             case "help":
-                // Open help URL like the original help button
                 openHelpUrl();
                 return true;
-                
+
             case "exit":
-    // Check if wine is running first
-    boolean isWineRunning = activity.isWineRunning();
-    
-    AlertDialog.Builder builder = new AlertDialog.Builder(activity)
-        .setTitle(isWineRunning ? "⚠️ Wine is Running" : "Exit Application")
-        .setPositiveButton("Exit", (dialog, which) -> {
-            if (activity != null) {
-                activity.killWineProcesses();
-                activity.prepareToExit();
-            }
-        })
-        .setNegativeButton("Cancel", (dialog, which) -> dialog.dismiss());
-    
-    if (isWineRunning) {
-        builder.setMessage("Wine processes are currently running!\n\nIf you exit now, all Wine applications will be closed.\n\nAre you sure you want to exit?")
-               .setNeutralButton("Just Exit App", (dialog, which) -> {
-                   // Exit without killing wine
-                   if (activity != null) {
-                       activity.prepareToExit();
-                   }
-               });
-    } else {
-        builder.setMessage("❌Do you want to exit the application?🛑");
-    }
-    
-    builder.show();
-    activity.drawerLayout.closeDrawer(GravityCompat.START);
-    return true;
-    
+                System.exit(0);
+                activity.finish();
+                return true;
         }
-        
         return false;
     }
-    
+
+    @Override
+    public boolean onPreferenceChange(Preference preference, Object newValue) {
+        String key = preference.getKey();
+        if (key == null) return false;
+
+        switch (key) {
+            case "hud_enabled":   // must match the key in XML
+                boolean enable = (Boolean) newValue;
+                if (enable) {
+                    startHudService();
+                } else {
+                    stopHudService();
+                }
+                // Return true to accept the change (the switch will update)
+                return true;
+        }
+        return false;
+    }
+
+    private void startHudService() {
+        // Check overlay permission on Android M+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(activity)) {
+            // Request permission
+            Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                    Uri.parse("package:" + activity.getPackageName()));
+            activity.startActivityForResult(intent, 1001);
+
+            // Revert the switch state because permission not granted
+            SwitchPreferenceCompat hudSwitch = findPreference("hud_enabled");
+            if (hudSwitch != null) {
+                hudSwitch.setChecked(false);
+            }
+
+            Toast.makeText(activity, "Please grant overlay permission", Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        Intent serviceIntent = new Intent(activity, HudService.class);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            activity.startForegroundService(serviceIntent);
+        } else {
+            activity.startService(serviceIntent);
+        }
+        Toast.makeText(activity, "HUD started", Toast.LENGTH_SHORT).show();
+        activity.drawerLayout.closeDrawer(GravityCompat.START);
+    }
+
+    private void stopHudService() {
+        Intent serviceIntent = new Intent(activity, HudService.class);
+        activity.stopService(serviceIntent);
+        Toast.makeText(activity, "HUD stopped", Toast.LENGTH_SHORT).show();
+        activity.drawerLayout.closeDrawer(GravityCompat.START);
+    }
+
     private void openHelpUrl() {
         try {
-            Intent helpIntent = new Intent(Intent.ACTION_VIEW, 
-                Uri.parse("https://github.com/termux/termux-x11/blob/master/README.md#running-graphical-applications"));
+            Intent helpIntent = new Intent(Intent.ACTION_VIEW,
+                    Uri.parse("https://github.com/termux/termux-x11/blob/master/README.md#running-graphical-applications"));
             activity.startActivity(helpIntent);
             activity.drawerLayout.closeDrawer(GravityCompat.START);
         } catch (Exception e) {
@@ -1972,7 +2001,7 @@ public static class DrawerPreferenceFragment extends PreferenceFragmentCompat
             Log.e("DrawerPreferenceFragment", "Error opening help URL", e);
         }
     }
-    
+
     @Override
     public boolean onPreferenceTreeClick(@NonNull Preference preference) {
         return onPreferenceClick(preference);

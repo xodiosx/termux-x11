@@ -35,7 +35,22 @@
             android:icon="@android:drawable/ic_menu_info_details"
             android:summary="Start debugging-logs saved to App's Data folder" />
     </PreferenceCategory>
+    <PreferenceCategory android:title="HUD">
 
+        <SwitchPreferenceCompat
+            android:key="hud_enable"
+            android:title="Enable performance HUD"
+            android:summary="Show FPS, CPU, memory overlay"
+            android:defaultValue="false"
+            app:iconSpaceReserved="false" />
+
+    </PreferenceCategory>
+<SwitchPreferenceCompat
+    android:key="hud_enabled"
+    android:title="Enable HUD"
+    android:summary="Show FPS, CPU, memory overlay"
+    android:defaultValue="false"
+    app:iconSpaceReserved="false" />
     <!-- Info & Actions -->
     <PreferenceCategory android:title="Information">
         <Preference

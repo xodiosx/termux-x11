@@ -2006,11 +2006,11 @@ public static class DrawerPreferenceFragment extends PreferenceFragmentCompat
       //  activity.startActivityForResult(intent, 1001);
 
         // Revert the switch
-        SwitchPreferenceCompat hudSwitch = findPreference("hud_enabled");
-        if (hudSwitch != null) hudSwitch.setChecked(false);
+    //    SwitchPreferenceCompat hudSwitch = findPreference("hud_enabled");
+   //     if (hudSwitch != null) hudSwitch.setChecked(false);
 
-        Toast.makeText(activity, "Please grant overlay permission", Toast.LENGTH_LONG).show();
-        return;
+   //     Toast.makeText(activity, "Please grant overlay permission", Toast.LENGTH_LONG).show();
+//      return;
 //    }
 
     activity.startHudService();   // <-- use activity's method

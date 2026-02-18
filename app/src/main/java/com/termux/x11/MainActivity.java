@@ -496,7 +496,7 @@ return findViewById(R.id.display_terminal_toolbar_view_pager);
         @Override
         public void onExitApp() {
             // Exit the app
-            System.exit(0);
+          //  System.exit(0);
          finish();
        //     finishAffinity();
         }
@@ -619,7 +619,7 @@ public void onBackPressed() {
             showPreferencesInDrawer();
             drawerLayout.openDrawer(GravityCompat.START);
         // Double tap to exit
-        if (backPressedTime + 2000 > System.currentTimeMillis()) {
+      /*  if (backPressedTime + 2000 > System.currentTimeMillis()) {
             //super.onBackPressed();
 
 
@@ -627,7 +627,9 @@ public void onBackPressed() {
         } else {
             Toast.makeText(this, "Press back 2 times to exit", Toast.LENGTH_SHORT).show();
         }
+        
         backPressedTime = System.currentTimeMillis();
+        */
     }
 }
 
@@ -658,8 +660,8 @@ public void prepareToExit() {
             // 5. Exit process completely
             handler.postDelayed(() -> {
                
-             System.exit(0);
-          //   finish();
+            // System.exit(0);
+            finish();
             }, 100);
             
         } catch (Exception e) {
@@ -1972,7 +1974,7 @@ public static class DrawerPreferenceFragment extends PreferenceFragmentCompat
                 return true;
 
             case "exit":
-                System.exit(0);
+               // System.exit(0);
                 activity.finish();
                 return true;
         }

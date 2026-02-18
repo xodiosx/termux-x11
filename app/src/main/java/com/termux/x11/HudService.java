@@ -1,293 +1,360 @@
 package com.termux.x11;
 
-import java.util.Locale;
-import android.app.*;
+import android.app.Activity;
+import android.app.ActivityManager;
+import android.app.Service;
+import android.content.Context;
 import android.content.Intent;
-import android.graphics.*;
-import android.os.*;
+import android.graphics.Color;
+import android.graphics.Typeface;
+import android.os.Binder;
+import android.os.Build;
+import android.os.Handler;
+import android.os.IBinder;
+import android.os.Looper;
+import android.os.SystemClock;
 import android.text.SpannableString;
 import android.text.Spanned;
 import android.text.style.ForegroundColorSpan;
 import android.util.Log;
-import android.view.*;
+import android.view.Gravity;
+import android.view.ViewGroup;
 import android.widget.TextView;
+import android.widget.FrameLayout;
 
-import androidx.core.app.NotificationCompat;
-
-import java.io.*;
-import java.util.concurrent.*;
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileReader;
+import java.io.InputStreamReader;
+import java.lang.ref.WeakReference;
+import java.util.ArrayList;
+import java.util.Locale;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileWriter;
+import java.io.InputStreamReader;
+import java.io.FileOutputStream;
+import java.io.InputStream;
 
 public class HudService extends Service {
 
-    private static final String CHANNEL_ID = "hud_channel";
-    private static final int NOTIFICATION_ID = 1;
     private static final String TAG = "HudService";
 
-    // Set this to true to write ALL logcat lines to a file (for debugging)
-    private static final boolean DEBUG_WRITE_ALL_LOGS = true;
-
-    private WindowManager windowManager;
+    /* ---------- ACTIVITY ATTACHMENT ---------- */
+    private WeakReference<Activity> activityRef;
     private TextView hudView;
+    private boolean attached = false;
 
+    /* ---------- THREADING ---------- */
     private ScheduledExecutorService scheduler;
     private Handler mainHandler;
 
-    /* ---------- FPS STATE ---------- */
-    private volatile String fpsValue = "FPS: N/A";
-    private Thread fpsReaderThread;
-    private volatile boolean fpsReaderRunning = true;
+    /* ---------- FPS ---------- */
+    private volatile String fpsText = "FPS: N/A";
+    private volatile float fpsValue = -1f;
+    private Thread fpsThread;
+    private volatile boolean fpsRunning = true;
 
-    /* ---------- CPU STATE ---------- */
-    private long lastIdle = -1;
-    private long lastTotal = -1;
+    /* ---------- CPU (whole app) ---------- */
+    private long lastAppCpuTicks = 0;
+    private long lastWallTimeMs = 0;
 
-    /* ---------- GPU ---------- */
-    private String gpuName = "GPU: N/A";
+    /* ---------- GPU / MEM / TEMP ---------- */
+    private String gpuName = "GPU: Unknown";
+    private String totalRam;
 
-    /* ---------- MEMORY ---------- */
-    private String totalRAM = null;
+    /* ===================== SERVICE ===================== */
 
-    // File writers
-    private FileWriter fpsFileWriter;
-    private FileWriter allLogsWriter; // for DEBUG_WRITE_ALL_LOGS
+    public class LocalBinder extends Binder {
+        public HudService getService() {
+            return HudService.this;
+        }
+    }
+
+    private final IBinder binder = new LocalBinder();
 
     @Override
     public void onCreate() {
         super.onCreate();
-
         mainHandler = new Handler(Looper.getMainLooper());
-
-        createNotificationChannel();
-        startForeground(NOTIFICATION_ID, buildNotification());
-
         gpuName = detectGpuName();
-        totalRAM = getTotalRAM();
-
-        createOverlayView();
-
-        // Prepare log files
-        prepareLogFiles();
-
-        startFpsReaderThread();
-        startStatsLoop();
+        totalRam = getTotalRam();
+        startFpsReader();
+        startHudLoop();
     }
 
-    /**
-     * Prepares fps.log and (if DEBUG) logcat_all.log
-     */
-    private void prepareLogFiles() {
-        try {
-            File dir = new File(getExternalFilesDir(null), "logs");
-            if (!dir.exists()) dir.mkdirs();
+    /* ===================== ACTIVITY BINDING ===================== */
 
-            // fps.log (always)
-            File fpsFile = new File(dir, "fps.log");
-            fpsFileWriter = new FileWriter(fpsFile, true);
-            Log.d(TAG, "FPS log file: " + fpsFile.getAbsolutePath());
-            fpsFileWriter.write("--- HudService started at " + System.currentTimeMillis() + " ---\n");
-            fpsFileWriter.flush();
+    public void attachToActivity(Activity activity) {
+        detach();
+        activityRef = new WeakReference<>(activity);
 
-            // logcat_all.log (debug only)
-            if (DEBUG_WRITE_ALL_LOGS) {
-                File allFile = new File(dir, "logcat_all.log");
-                allLogsWriter = new FileWriter(allFile, true);
-                allLogsWriter.write("--- HudService started at " + System.currentTimeMillis() + " ---\n");
-                allLogsWriter.flush();
-                Log.d(TAG, "All logs file: " + allFile.getAbsolutePath());
-            }
-        } catch (Exception e) {
-            Log.e(TAG, "Failed to create log files", e);
-        }
+        mainHandler.post(() -> {
+            Activity act = activityRef.get();
+            if (act == null) return;
+
+            hudView = new TextView(act);
+            hudView.setTypeface(Typeface.MONOSPACE);
+            hudView.setTextSize(12);
+            hudView.setPadding(12, 6, 12, 6);
+            hudView.setBackgroundColor(Color.argb(160, 0, 0, 0));
+
+            FrameLayout.LayoutParams params =
+                    new FrameLayout.LayoutParams(
+                            FrameLayout.LayoutParams.WRAP_CONTENT,
+                            FrameLayout.LayoutParams.WRAP_CONTENT,
+                            Gravity.TOP | Gravity.START
+                    );
+            params.leftMargin = 8;
+            params.topMargin = 0;
+
+            ViewGroup decor = (ViewGroup) act.getWindow().getDecorView();
+            decor.addView(hudView, params);
+            attached = true;
+            Log.d(TAG, "HUD attached to activity");
+        });
     }
 
-    /* ===================== UI ===================== */
+    public void detach() {
+        mainHandler.post(() -> {
+            if (!attached || hudView == null) return;
+            Activity act = activityRef != null ? activityRef.get() : null;
+            if (act == null) return;
 
-    private void createOverlayView() {
-        windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
-
-        hudView = new TextView(this);
-        hudView.setTextSize(12);
-        hudView.setPadding(10, 4, 10, 4);
-        hudView.setTypeface(Typeface.MONOSPACE);
-        hudView.setBackgroundColor(Color.argb(140, 0, 0, 0));
-
-        WindowManager.LayoutParams params =
-                new WindowManager.LayoutParams(
-                        WindowManager.LayoutParams.WRAP_CONTENT,
-                        WindowManager.LayoutParams.WRAP_CONTENT,
-                        WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-                        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-                                | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
-                        PixelFormat.TRANSLUCENT
-                );
-
-        params.gravity = Gravity.TOP | Gravity.START;
-        params.x = 5;
-        params.y = 0;
-
-        windowManager.addView(hudView, params);
+            ViewGroup decor = (ViewGroup) act.getWindow().getDecorView();
+            decor.removeView(hudView);
+            hudView = null;
+            attached = false;
+            Log.d(TAG, "HUD detached");
+        });
     }
 
-    /* ===================== MAIN LOOP ===================== */
+    /* ===================== HUD UPDATE LOOP ===================== */
 
-    private void startStatsLoop() {
+    private void startHudLoop() {
         scheduler = Executors.newSingleThreadScheduledExecutor();
         scheduler.scheduleAtFixedRate(() -> {
-            SpannableString hudText = buildColoredHud();
-            mainHandler.post(() -> hudView.setText(hudText));
+            SpannableString text = buildHudText();
+            mainHandler.post(() -> {
+                if (attached && hudView != null) {
+                    hudView.setText(text);
+                }
+            });
         }, 0, 2, TimeUnit.SECONDS);
     }
 
-    /* ===================== HUD TEXT ===================== */
+    /* ===================== BUILD HUD WITH COLORS ===================== */
 
-    private SpannableString buildColoredHud() {
-        String fps = fpsValue;
-        String temp = getCpuTemp();
+    private SpannableString buildHudText() {
+        String fps = fpsText;
+        String temp = getCpuTemp();          // e.g. "CPU: 45.2°C"
         String cpu = getCpuUsage();
         String mem = getMemoryInfo();
-        String gpu = gpuName;
+        long availMB = getAvailableMemoryMB();
+        float tempVal = getCpuTempValue();   // numeric for coloring
 
-        String full = fps + " | " + temp + " | " + cpu + " | " + gpu + " | " + mem;
+        String full = fps + " | " + temp + " | " + cpu + " | " + gpuName + " | " + mem;
         SpannableString s = new SpannableString(full);
 
-        colorPart(s, fps, Color.YELLOW);
-        colorPart(s, temp, Color.CYAN);
-        colorPart(s, cpu, Color.GREEN);
-        colorPart(s, gpu, Color.MAGENTA);
-        colorPart(s, mem, Color.LTGRAY);
+        // FPS color
+        color(s, fps, fpsValue >= 0 && fpsValue < 10 ? Color.RED : Color.GREEN);
+
+        // Temperature color
+        int tempColor;
+        if (tempVal < 0) {
+            tempColor = Color.LTGRAY;      // unavailable
+        } else if (tempVal > 70) {
+            tempColor = Color.RED;
+        } else if (tempVal > 40) {
+            tempColor = Color.rgb(255, 165, 0); // orange
+        } else {
+            tempColor = Color.CYAN;
+        }
+        color(s, temp, tempColor);
+
+        // CPU usage always yellow
+        color(s, cpu, Color.YELLOW);
+
+        // GPU name magenta
+        color(s, gpuName, Color.MAGENTA);
+
+        // Memory red if < 800 MB available
+        int memColor = (availMB >= 0 && availMB < 800) ? Color.RED : Color.CYAN;
+        color(s, mem, memColor);
 
         return s;
     }
 
-    private void colorPart(SpannableString s, String part, int color) {
+    private void color(SpannableString s, String part, int color) {
         int start = s.toString().indexOf(part);
         if (start >= 0) {
-            s.setSpan(new ForegroundColorSpan(color), start,
-                    start + part.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            s.setSpan(new ForegroundColorSpan(color),
+                    start, start + part.length(),
+                    Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         }
     }
 
-    /* ===================== FPS READER – ULTIMATE DEBUG VERSION ===================== */
+    /* ===================== FPS READER (with logcat -c) ===================== */
+private java.io.BufferedWriter openLogFile() throws Exception {
+    File dir = getExternalFilesDir(null); // Android/data/.../files
+    if (dir == null) throw new IllegalStateException("External files dir is null");
 
-    private String findGrepPath() {
-        File customGrep = new File(getFilesDir(), "usr/bin/grep");
-        if (customGrep.exists() && customGrep.canExecute()) {
-            Log.d(TAG, "Found grep in app data: " + customGrep.getAbsolutePath());
-            return customGrep.getAbsolutePath();
-        }
-        String[] systemPaths = { "/system/bin/grep", "/system/xbin/grep", "/bin/grep" };
-        for (String path : systemPaths) {
-            File f = new File(path);
-            if (f.exists() && f.canExecute()) {
-                Log.d(TAG, "Found system grep: " + path);
-                return path;
-            }
-        }
-        Log.d(TAG, "No grep binary found, will use Java filtering");
-        return null;
-    }
+    File logFile = new File(dir, "log.txt");
 
-    private void startFpsReaderThread() {
-        fpsReaderRunning = true;
-        fpsReaderThread = new Thread(() -> {
-            java.lang.Process process = null;
-            BufferedReader reader = null;
-            String grepPath = findGrepPath();
+    return new java.io.BufferedWriter(
+            new java.io.FileWriter(logFile, true) // append
+    );
+}
 
-            try {
-                // Clear logcat buffer (optional)
-                Runtime.getRuntime().exec(new String[]{"logcat", "-c"}).waitFor();
 
-                ProcessBuilder pb;
-                String commandDescription;
+    private void startFpsReader() {
+    fpsThread = new Thread(() -> {
+        BufferedWriter fileWriter = null;
 
-                if (grepPath != null) {
-                    // Use grep with --line-buffered, but also tag filter to exclude our own debug logs
-                    // Command: logcat -s LorieNative:I -v time | grep --line-buffered "FPS"
-                    String logcatCmd = "logcat -s LorieNative:I -v time";
-                    String grepCmd = grepPath + " --line-buffered \"FPS\"";
-                    String fullCmd = logcatCmd + " | " + grepCmd;
-                    pb = new ProcessBuilder("sh", "-c", fullCmd);
-                    commandDescription = "grep pipeline: " + fullCmd;
-                } else {
-                    // No grep: read all logcat lines with tag filter, filter in Java
-                    pb = new ProcessBuilder("logcat", "-s", "LorieNative:I", "-v", "time");
-                    commandDescription = "logcat with tag filter (Java parsing)";
-                }
-
-                pb.redirectErrorStream(true);
-                process = pb.start();
-
-                Log.d(TAG, "FPS reader thread started, command: " + commandDescription);
-                writeToFpsLog("# Command: " + commandDescription);
-
-                reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
-
-                String line;
-                while (fpsReaderRunning && (line = reader.readLine()) != null) {
-                    // DEBUG: write every line to logcat_all.log
-                    if (DEBUG_WRITE_ALL_LOGS && allLogsWriter != null) {
-                        try {
-                            allLogsWriter.write(line + "\n");
-                            allLogsWriter.flush();
-                        } catch (IOException e) {
-                            Log.e(TAG, "Failed to write to allLogsWriter", e);
-                        }
-                    }
-
-                    // Always check for FPS
-                    if (line.contains("FPS")) {
-                        writeToFpsLog(line); // store raw line
-                        parseFpsLine(line);
-                    }
-                }
-            } catch (Exception e) {
-                Log.e(TAG, "Error in FPS reader thread", e);
-                fpsValue = "FPS: error";
-                writeToFpsLog("# ERROR: " + e.getMessage());
-            } finally {
-                if (reader != null) try { reader.close(); } catch (IOException ignored) {}
-                if (process != null) process.destroy();
-                closeWriters();
-            }
-        }, "FPS-Logcat-Reader");
-        fpsReaderThread.setDaemon(true);
-        fpsReaderThread.start();
-    }
-
-    private void parseFpsLine(String line) {
-        // Expect format: "... = 6.8 FPS"
-        int idx = line.lastIndexOf('=');
-        if (idx != -1) {
-            String afterEq = line.substring(idx + 1).trim();
-            String[] parts = afterEq.split("\\s+");
-            if (parts.length > 0) {
-                fpsValue = "FPS: " + parts[0];
-                Log.d(TAG, "Updated FPS: " + fpsValue);
-            }
-        }
-    }
-
-    private void writeToFpsLog(String line) {
-        if (fpsFileWriter == null) return;
         try {
-            fpsFileWriter.write(line + "\n");
-            fpsFileWriter.flush();
-        } catch (IOException e) {
-            Log.e(TAG, "Failed to write to fps.log", e);
+            File outFile = new File(
+                    getExternalFilesDir(null),
+                    "log.txt"
+            );
+            fileWriter = new BufferedWriter(new FileWriter(outFile, true));
+
+            String[] cmd = {
+                    "/system/bin/sh",
+                    "-c",
+                    "PATH=/system/bin exec /system/bin/logcat | /system/bin/grep --line-buffered FPS"
+            };
+
+            Process p = Runtime.getRuntime().exec(cmd);
+
+            BufferedReader br = new BufferedReader(
+                    new InputStreamReader(p.getInputStream())
+            );
+
+            String line;
+            while (fpsRunning && (line = br.readLine()) != null) {
+                // Write EVERYTHING so we can see if it works
+               // fileWriter.write(line);
+               /// fileWriter.newLine();
+               // fileWriter.flush();
+
+                if (!line.contains("FPS")) continue;
+                parseFps(line);
+            }
+
+        } catch (Exception e) {
+            Log.e(TAG, "FPS shell reader failed", e);
+        } finally {
+            try {
+                if (fileWriter != null) fileWriter.close();
+            } catch (Exception ignored) {}
+        }
+    }, "FPS-Shell-Reader");
+
+    fpsThread.setDaemon(true);
+    fpsThread.start();
+}
+    private void parseFps(String line) {
+        int idx = line.lastIndexOf('=');
+        if (idx < 0) return;
+
+        String num = line.substring(idx + 1).replace("FPS", "").trim();
+        try {
+            fpsValue = Float.parseFloat(num);
+            fpsText = "FPS: " + num;
+        } catch (Exception ignored) {}
+    }
+
+    /* ===================== CPU USAGE (whole app UID) ===================== */
+
+    private int[] getAppPids() {
+        int uid = android.os.Process.myUid();
+        ArrayList<Integer> pids = new ArrayList<>();
+
+        File proc = new File("/proc");
+        File[] files = proc.listFiles();
+        if (files == null) return new int[0];
+
+        for (File f : files) {
+            if (!f.isDirectory()) continue;
+
+            int pid;
+            try {
+                pid = Integer.parseInt(f.getName());
+            } catch (NumberFormatException e) {
+                continue;
+            }
+
+            try (BufferedReader br =
+                         new BufferedReader(new FileReader("/proc/" + pid + "/status"))) {
+                String line;
+                while ((line = br.readLine()) != null) {
+                    if (line.startsWith("Uid:")) {
+                        String[] parts = line.split("\\s+");
+                        int procUid = Integer.parseInt(parts[1]);
+                        if (procUid == uid) {
+                            pids.add(pid);
+                        }
+                        break;
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+
+        int[] out = new int[pids.size()];
+        for (int i = 0; i < pids.size(); i++) out[i] = pids.get(i);
+        return out;
+    }
+
+    private long readProcessCpuTicks(int pid) {
+        try (BufferedReader br =
+                     new BufferedReader(new FileReader("/proc/" + pid + "/stat"))) {
+
+            String[] t = br.readLine().split("\\s+");
+            long utime = Long.parseLong(t[13]);
+            long stime = Long.parseLong(t[14]);
+            return utime + stime;
+
+        } catch (Exception e) {
+            return 0;
         }
     }
 
-    private void closeWriters() {
-        if (fpsFileWriter != null) {
-            try { fpsFileWriter.close(); } catch (IOException ignored) {}
+    private String getCpuUsage() {
+        long now = SystemClock.elapsedRealtime();
+        int[] pids = getAppPids();
+
+        long totalCpuTicks = 0;
+        for (int pid : pids) {
+            totalCpuTicks += readProcessCpuTicks(pid);
         }
-        if (allLogsWriter != null) {
-            try { allLogsWriter.close(); } catch (IOException ignored) {}
+
+        if (lastWallTimeMs == 0) {
+            lastWallTimeMs = now;
+            lastAppCpuTicks = totalCpuTicks;
+            return "CPU: ...";
         }
+
+        long dCpu = totalCpuTicks - lastAppCpuTicks;   // ticks
+        long dTime = now - lastWallTimeMs;              // ms
+
+        lastWallTimeMs = now;
+        lastAppCpuTicks = totalCpuTicks;
+
+        if (dTime <= 0) return "CPU: 0%";
+
+        // USER_HZ = 100 → 1 tick = 10 ms
+        // cpu_ms = dCpu * 10
+        // usage% = (cpu_ms / dTime) * 100 = dCpu * 1000 / dTime
+        float usage = (dCpu * 1000f) / dTime;
+
+        return String.format(Locale.US, "CPU: %.1f%%", usage);
     }
 
-    /* ===================== CPU TEMP ===================== */
+    /* ===================== CPU TEMPERATURE ===================== */
 
     private String getCpuTemp() {
         for (int i = 0; i < 10; i++) {
@@ -296,6 +363,7 @@ public class HudService extends Service {
                 BufferedReader br = new BufferedReader(new FileReader(path));
                 int temp = Integer.parseInt(br.readLine().trim());
                 br.close();
+
                 if (temp > 10000) {
                     return String.format("CPU: %.1f°C", temp / 1000f);
                 }
@@ -304,127 +372,100 @@ public class HudService extends Service {
         return "CPU: N/A";
     }
 
-    /* ===================== CPU USAGE ===================== */
+    private float getCpuTempValue() {
+        for (int i = 0; i < 10; i++) {
+            try {
+                String path = "/sys/class/thermal/thermal_zone" + i + "/temp";
+                BufferedReader br = new BufferedReader(new FileReader(path));
+                int temp = Integer.parseInt(br.readLine().trim());
+                br.close();
 
-    /* ===================== CPU USAGE (per-process using Android shell) ===================== */
-private String getCpuUsage() {
-    try {
-        // 1️⃣ Get the current process PID
-        int pid = android.os.Process.myPid(); // current process PID
-
-        // 2️⃣ Clock ticks per second
-        int hz = 100; // Android default CLK_TCK
-
-        // 3️⃣ Construct shell command to mimic your bash logic
-        String cmd = "/system/bin/sh -c '" +
-                "PID=" + pid + " && " +
-                "HZ=" + hz + " && " +
-                "read utime1 stime1 < <(/system/bin/awk \"{print $14, $15}\" /proc/$PID/stat) && " +
-                "/system/bin/sleep 1 && " +
-                "read utime2 stime2 < <(/system/bin/awk \"{print $14, $15}\" /proc/$PID/stat) && " +
-                "delta=$(( (utime2 + stime2) - (utime1 + stime1) )) && " +
-                "cpu=$(/system/bin/awk -v d=$delta -v h=$HZ 'BEGIN { printf \"%.1f\", (d/h)*100 }') && " +
-                "echo $cpu" +
-                "'";
-
-        // 4️⃣ Execute shell command
-        java.lang.Process process = Runtime.getRuntime().exec(cmd);
-
-        // 5️⃣ Read output
-        BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
-        String line = reader.readLine();
-        reader.close();
-        process.waitFor();
-
-        if (line != null && !line.isEmpty()) {
-            return "CPU: " + line + "%";
-        } else {
-            return "CPU: N/A";
+                if (temp > 10000) {
+                    return temp / 1000f;
+                }
+            } catch (Exception ignored) {}
         }
-    } catch (Exception e) {
-        return "CPU: N/A";
+        return -1;
     }
-}
+
+    /* ===================== MEMORY ===================== */
+
+    private String getMemoryInfo() {
+        ActivityManager am = (ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
+        ActivityManager.MemoryInfo mi = new ActivityManager.MemoryInfo();
+        am.getMemoryInfo(mi);
+        long used = mi.totalMem - mi.availMem;
+        return "MEM: " + formatBytes(used) + " / " + totalRam;
+    }
+
+    private String getTotalRam() {
+        ActivityManager am = (ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
+        ActivityManager.MemoryInfo mi = new ActivityManager.MemoryInfo();
+        am.getMemoryInfo(mi);
+        return formatBytes(mi.totalMem);
+    }
+
+    private long getAvailableMemoryMB() {
+        try {
+            ActivityManager am = (ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
+            ActivityManager.MemoryInfo mi = new ActivityManager.MemoryInfo();
+            am.getMemoryInfo(mi);
+            return mi.availMem / (1024 * 1024); // MB
+        } catch (Exception e) {
+            return -1;
+        }
+    }
+
+    private String formatBytes(long b) {
+        int e = (int) (Math.log(b) / Math.log(1024));
+        return String.format(Locale.US, "%.1f %sB",
+                b / Math.pow(1024, e), "KMGTPE".charAt(e - 1));
+    }
+
     /* ===================== GPU NAME ===================== */
 
     private String detectGpuName() {
-        String[] props = { "ro.hardware.vulkan", "ro.hardware.egl", "ro.board.platform" };
+        String[] props = {
+                "ro.hardware.vulkan",
+                "ro.hardware.egl",
+                "ro.board.platform"
+        };
         for (String p : props) {
             String v = getProp(p);
-            if (v != null && !v.isEmpty()) return "GPU: " + v;
+            if (v != null && !v.isEmpty())
+                return "GPU: " + v;
         }
         return "GPU: Unknown";
     }
 
     private String getProp(String key) {
         try {
-            java.lang.Process p = Runtime.getRuntime().exec(new String[]{"getprop", key});
-            BufferedReader br = new BufferedReader(new InputStreamReader(p.getInputStream()));
+            java.lang.Process p =
+                    Runtime.getRuntime().exec(new String[]{"getprop", key});
+            BufferedReader br = new BufferedReader(
+                    new InputStreamReader(p.getInputStream()));
             return br.readLine();
         } catch (Exception e) {
             return null;
         }
     }
 
-    /* ===================== MEMORY ===================== */
-
-    private String getTotalRAM() {
-        ActivityManager activityManager = (ActivityManager) getSystemService(ACTIVITY_SERVICE);
-        ActivityManager.MemoryInfo memoryInfo = new ActivityManager.MemoryInfo();
-        activityManager.getMemoryInfo(memoryInfo);
-        return formatBytes(memoryInfo.totalMem);
-    }
-
-    private String getAvailableRAM() {
-        ActivityManager activityManager = (ActivityManager) getSystemService(ACTIVITY_SERVICE);
-        ActivityManager.MemoryInfo memoryInfo = new ActivityManager.MemoryInfo();
-        activityManager.getMemoryInfo(memoryInfo);
-        long usedMem = memoryInfo.totalMem - memoryInfo.availMem;
-        return formatBytes(usedMem);
-    }
-
-    private String formatBytes(long bytes) {
-        if (bytes < 1024) return bytes + " B";
-        int exp = (int) (Math.log(bytes) / Math.log(1024));
-        String pre = "KMGTPE".charAt(exp-1) + "";
-        return String.format(Locale.US, "%.1f %sB", bytes / Math.pow(1024, exp), pre);
-    }
-
-    private String getMemoryInfo() {
-        if (totalRAM == null) totalRAM = getTotalRAM();
-        return "MEM: " + getAvailableRAM() + " / " + totalRAM;
-    }
-
-    /* ===================== NOTIFICATION ===================== */
-
-    private void createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel channel = new NotificationChannel(
-                    CHANNEL_ID, "HUD Service", NotificationManager.IMPORTANCE_LOW);
-            getSystemService(NotificationManager.class).createNotificationChannel(channel);
-        }
-    }
-
-    private Notification buildNotification() {
-        return new NotificationCompat.Builder(this, CHANNEL_ID)
-                .setContentTitle("HUD active")
-                .setContentText("System monitor overlay running")
-                .setSmallIcon(android.R.drawable.presence_online)
-                .build();
-    }
+    /* ===================== CLEANUP ===================== */
 
     @Override
     public void onDestroy() {
-        fpsReaderRunning = false;
-        if (fpsReaderThread != null) fpsReaderThread.interrupt();
-        if (hudView != null) windowManager.removeView(hudView);
+        fpsRunning = false;
+        detach();
         if (scheduler != null) scheduler.shutdownNow();
-        closeWriters();
         super.onDestroy();
     }
 
     @Override
     public IBinder onBind(Intent intent) {
-        return null;
+        return binder;
     }
+
+    
+    
+    
 }

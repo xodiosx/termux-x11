@@ -1,4 +1,6 @@
 package com.termux.x11;
+
+
 // Add these imports at the top with other imports
 import android.net.Uri;
 import androidx.fragment.app.FragmentManager;
@@ -60,7 +62,7 @@ import android.os.Handler;
 import android.app.Notification;
 import android.app.NotificationManager;
 import android.content.Context;
-import android.content.Intent;
+
 import android.content.SharedPreferences;
 import android.preference.PreferenceManager;
 import android.view.View;
@@ -136,7 +138,9 @@ import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.ImageButton;
 import android.widget.LinearLayout;
-
+import android.content.ComponentName;
+import android.content.ServiceConnection;
+import android.os.IBinder;
 import androidx.annotation.NonNull;
 import androidx.core.math.MathUtils;
 import androidx.viewpager.widget.ViewPager;
@@ -203,6 +207,60 @@ private DrawerLayout drawerLayout;
     
         private final SharedPreferences.OnSharedPreferenceChangeListener preferencesChangedListener = (__, key) -> onPreferencesChanged(key);
     private static boolean softKeyboardShown = false;
+
+// hud
+// service hug
+private HudService hudService;
+private boolean isBound = false;
+
+private ServiceConnection hudConnection = new ServiceConnection() {
+    @Override
+    public void onServiceConnected(ComponentName name, IBinder service) {
+        HudService.LocalBinder binder = (HudService.LocalBinder) service;
+        hudService = binder.getService();
+        // If activity is resumed, attach immediately
+        if (isResumed) {
+            hudService.attachToActivity(MainActivity.this);
+        }
+        isBound = true;
+    }
+
+    @Override
+    public void onServiceDisconnected(ComponentName name) {
+        isBound = false;
+        hudService = null;
+    }
+};
+
+private boolean isResumed = false;
+
+// Call this when the HUD preference is enabled
+public void startHudService() {
+    Intent intent = new Intent(this, HudService.class);
+    
+        startService(intent);
+    
+    bindService(intent, hudConnection, Context.BIND_AUTO_CREATE);
+}
+
+// Call this when the HUD preference is disabled
+public void stopHudService() {
+    if (isBound) {
+        unbindService(hudConnection);
+        isBound = false;
+    }
+    Intent intent = new Intent(this, HudService.class);
+    stopService(intent);
+}
+
+// Called from onStart to start HUD if preference is enabled
+private void startHudIfEnabled() {
+    SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
+    boolean hudEnabled = prefs.getBoolean("hud_enabled", false);
+    if (hudEnabled) {
+        startHudService();
+    }
+}
 
 
  //////////////////////////////////////////////////////////////////
@@ -298,8 +356,7 @@ return findViewById(R.id.display_terminal_toolbar_view_pager);
                     Log.e("MainActivity", "Something went wrong while we extracted connection details from binder.", e);
                 }
             } else if (ACTION_STOP.equals(intent.getAction())) {
-           //     finishAffinity();
-               prepareToExit();
+                finishAffinity();
             } else if (ACTION_PREFERENCES_CHANGED.equals(intent.getAction())) {
                 Log.d("MainActivity", "preference: " + intent.getStringExtra("key"));
                 if (!"additionalKbdVisible".equals(intent.getStringExtra("key")))
@@ -386,9 +443,7 @@ return findViewById(R.id.display_terminal_toolbar_view_pager);
             if (LorieView.connected()) {
                 // Check what method LorieView has for disconnecting
                 // If there's no disconnect method, we'll just update the UI
-          LorieView.connect(-1);
-            
-                }
+            }
             
             // Update UI to show disconnected state
             clientConnectedStateChanged();
@@ -397,8 +452,6 @@ return findViewById(R.id.display_terminal_toolbar_view_pager);
             Toast.makeText(MainActivity.this, "Desktop stopped", Toast.LENGTH_SHORT).show();
         }
 
-
- 
         @Override
         public void openSoftwareKeyboard() {
             // Toggle keyboard visibility
@@ -511,43 +564,6 @@ public void stopDesktop() {
 }
 
 
-// Add this method to MainActivity class
-public void killWineProcesses() {
-    try {
-        // Execute pkill -f wine command
-        Process process = Runtime.getRuntime().exec(new String[]{"sh", "-c", "pkill -f wine"});
-        
-        // Wait for the command to complete
-        int exitCode = process.waitFor();
-        
-        // Also kill winhandler.exe specifically
-        Process process2 = Runtime.getRuntime().exec(new String[]{"sh", "-c", "pkill -f winhandler.exe"});
-        process2.waitFor();
-        
-        // Kill any remaining wine processes with -9 if needed
-        if (exitCode != 0) {
-            // pkill returns non-zero if no processes were found, which is OK
-            Log.d("MainActivity", "No wine processes found or couldn't kill them");
-        } else {
-            Log.d("MainActivity", "Successfully killed wine processes");
-        }
-        
-        // Additional cleanup: kill any remaining X11 processes
-        try {
-            Runtime.getRuntime().exec(new String[]{"sh", "-c", "pkill -f Xvfb"});
-        } catch (Exception e) {
-            // Ignore
-        }
-        
-    } catch (Exception e) {
-        Log.e("MainActivity", "Error killing wine processes", e);
-        // FIX: Use MainActivity.this instead of just 'this'
-        Toast.makeText(MainActivity.this, "Error killing wine processes: " + e.getMessage(), Toast.LENGTH_SHORT).show();
-    }
-}
-
-
-
 private void startDebugMode() {
     // Start debug mode
     Toast.makeText(this, "Debug mode started", Toast.LENGTH_SHORT).show();
@@ -609,7 +625,7 @@ public void onBackPressed() {
 
             finish();
         } else {
-            Toast.makeText(this, "Press 2 times to exit", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "Press back 2 times to exit", Toast.LENGTH_SHORT).show();
         }
         backPressedTime = System.currentTimeMillis();
     }
@@ -642,8 +658,8 @@ public void prepareToExit() {
             // 5. Exit process completely
             handler.postDelayed(() -> {
                
-          //      System.exit(0);
-         finish();
+             System.exit(0);
+          //   finish();
             }, 100);
             
         } catch (Exception e) {
@@ -1421,12 +1437,33 @@ mNotificationManager = (NotificationManager) getSystemService(Context.NOTIFICATI
         
     }
 
+
+@Override
+protected void onStart() {
+    super.onStart();
+    startHudIfEnabled();   // start & bind if enabled
+}
+
+
+@Override
+protected void onStop() {
+    super.onStop();
+    // Unbind but do NOT stop service – let it run in background
+    if (isBound) {
+        unbindService(hudConnection);
+        isBound = false;
+    }
+}
+
     @Override
     public void onResume() {
         super.onResume();
         mNotification = buildNotification();
         mNotificationManager.notify(mNotificationId, mNotification);
-
+isResumed = true;
+    if (isBound && hudService != null) {
+        hudService.attachToActivity(this);
+    }
         setTerminalToolbarView();
         getLorieView().requestFocus();
     }
@@ -1440,6 +1477,12 @@ mNotificationManager = (NotificationManager) getSystemService(Context.NOTIFICATI
                 mNotificationManager.cancel(mNotificationId);
 */
         super.onPause();
+        isResumed = false;
+        finish();
+        //prepareToExit();
+    if (isBound && hudService != null) {
+        hudService.detach();
+    }
     }
 
     public LorieView getLorieView() {
@@ -1956,39 +1999,30 @@ public static class DrawerPreferenceFragment extends PreferenceFragmentCompat
     }
 
     private void startHudService() {
-        // Check overlay permission on Android M+
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(activity)) {
-            // Request permission
-            Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                    Uri.parse("package:" + activity.getPackageName()));
-            activity.startActivityForResult(intent, 1001);
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(activity)) {
+        // Request permission
+        Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                Uri.parse("package:" + activity.getPackageName()));
+        activity.startActivityForResult(intent, 1001);
 
-            // Revert the switch state because permission not granted
-            SwitchPreferenceCompat hudSwitch = findPreference("hud_enabled");
-            if (hudSwitch != null) {
-                hudSwitch.setChecked(false);
-            }
+        // Revert the switch
+        SwitchPreferenceCompat hudSwitch = findPreference("hud_enabled");
+        if (hudSwitch != null) hudSwitch.setChecked(false);
 
-            Toast.makeText(activity, "Please grant overlay permission", Toast.LENGTH_LONG).show();
-            return;
-        }
-
-        Intent serviceIntent = new Intent(activity, HudService.class);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            activity.startForegroundService(serviceIntent);
-        } else {
-            activity.startService(serviceIntent);
-        }
-        Toast.makeText(activity, "HUD started", Toast.LENGTH_SHORT).show();
-        activity.drawerLayout.closeDrawer(GravityCompat.START);
+        Toast.makeText(activity, "Please grant overlay permission", Toast.LENGTH_LONG).show();
+        return;
     }
 
-    private void stopHudService() {
-        Intent serviceIntent = new Intent(activity, HudService.class);
-        activity.stopService(serviceIntent);
-        Toast.makeText(activity, "HUD stopped", Toast.LENGTH_SHORT).show();
-        activity.drawerLayout.closeDrawer(GravityCompat.START);
-    }
+    activity.startHudService();   // <-- use activity's method
+    Toast.makeText(activity, "HUD started", Toast.LENGTH_SHORT).show();
+    activity.drawerLayout.closeDrawer(GravityCompat.START);
+}
+
+private void stopHudService() {
+    activity.stopHudService();    // <-- use activity's method
+    Toast.makeText(activity, "HUD stopped", Toast.LENGTH_SHORT).show();
+    activity.drawerLayout.closeDrawer(GravityCompat.START);
+}
 
     private void openHelpUrl() {
         try {

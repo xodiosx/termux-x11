@@ -64,10 +64,11 @@
 
         <!-- HUD Service – single declaration -->
         <service
-            android:name=".HudService"
-            android:enabled="true"
-            android:exported="false"
-            tools:targetApi="q" /> <!-- foregroundServiceType attribute omitted for broader compatibility; add if needed with tools:targetApi -->
+    android:name=".HudService"
+    android:enabled="true"
+    android:exported="false"
+    android:process=":x11"
+    tools:targetApi="q" />
 
         <service android:name=".utils.KeyInterceptor"
             android:exported="true"

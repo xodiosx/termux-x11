@@ -1999,11 +1999,11 @@ public static class DrawerPreferenceFragment extends PreferenceFragmentCompat
     }
 
     private void startHudService() {
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(activity)) {
+  //  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(activity)) {
         // Request permission
-        Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                Uri.parse("package:" + activity.getPackageName()));
-        activity.startActivityForResult(intent, 1001);
+      //  Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+           //     Uri.parse("package:" + activity.getPackageName()));
+      //  activity.startActivityForResult(intent, 1001);
 
         // Revert the switch
         SwitchPreferenceCompat hudSwitch = findPreference("hud_enabled");
@@ -2011,7 +2011,7 @@ public static class DrawerPreferenceFragment extends PreferenceFragmentCompat
 
         Toast.makeText(activity, "Please grant overlay permission", Toast.LENGTH_LONG).show();
         return;
-    }
+//    }
 
     activity.startHudService();   // <-- use activity's method
     Toast.makeText(activity, "HUD started", Toast.LENGTH_SHORT).show();

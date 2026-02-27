@@ -1,6 +1,5 @@
 package com.termux.x11;
 
-
 // Add these imports at the top with other imports
 import android.net.Uri;
 import androidx.fragment.app.FragmentManager;
@@ -23,17 +22,16 @@ import android.content.Context;
 
 import androidx.appcompat.app.AppCompatActivity;
 import com.termux.x11.controller.winhandler.ProcessInfo;
-// Add these imports at the top of the file, after other imports:
+//
 import java.util.List;
 import java.util.ArrayList;
 import android.os.RemoteException;
 import android.os.ParcelFileDescriptor;
 
-
 import android.app.NotificationChannel;
 import androidx.viewpager.widget.ViewPager;
 import android.service.notification.StatusBarNotification;
-// Add these imports if they're missing
+// 
 import android.app.PendingIntent;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -56,8 +54,7 @@ import android.provider.Settings;
 import android.view.WindowInsets;
 import androidx.appcompat.app.AlertDialog;
 import java.util.Objects;
-
-// Add these imports at the top
+// 
 import android.os.Handler;
 import android.app.Notification;
 import android.app.NotificationManager;
@@ -76,7 +73,6 @@ import android.widget.ImageButton;
 import androidx.viewpager.widget.ViewPager;
 import androidx.core.app.NotificationCompat;
 import androidx.core.math.MathUtils;
-
 
 import static android.Manifest.permission.WRITE_SECURE_SETTINGS;
 import static android.content.pm.PackageManager.PERMISSION_GRANTED;
@@ -161,7 +157,15 @@ import com.termux.x11.utils.SamsungDexUtils;
 import com.termux.x11.utils.TermuxX11ExtraKeys;
 import com.termux.x11.utils.X11ToolbarViewPager;
 
-
+// ========== ADD THESE IMPORTS FOR PROCESS LISTING ==========
+import java.io.File;
+import java.io.BufferedReader;
+import java.io.FileReader;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import android.os.Process;  // for Process.myUid()
+// ===========================================================
 
 import java.io.File;
 import java.util.Map;
@@ -311,11 +315,9 @@ private void checkConnectedControllers() {
     
 public boolean isWineRunning() {
     try {
-        // Use pgrep for more reliable process detection
-        Process process = Runtime.getRuntime().exec("pgrep -f winhandler.exe");
-      // runOnUiThread(() -> Toast.makeText(this, "winhandler: ", Toast.LENGTH_SHORT).show());
-         return process.waitFor() == 0;
-        
+        // Fully qualify java.lang.Process to avoid conflict with android.os.Process
+        java.lang.Process process = Runtime.getRuntime().exec("pgrep -f winhandler.exe");
+        return process.waitFor() == 0;
     } catch (Exception e) {
         return false;
     }
@@ -472,9 +474,8 @@ return findViewById(R.id.display_terminal_toolbar_view_pager);
 
         @Override
         public List<ProcessInfo> collectProcessorInfo(String tag) {
-            // Return empty list
-            Log.d("MainActivity", "collectProcessorInfo called with tag: " + tag);
-            return new ArrayList<ProcessInfo>(); // Return empty list
+            // Return real Android process list instead of empty placeholder
+            return getAndroidProcessList();
         }
 
         @Override
@@ -961,7 +962,7 @@ lorieView.setOnCapturedPointerListener((v, e) -> {
     });
 
      
-  /*     // Set up basic touch listeners - let dispatchTouchEvent handle the complex routing
+  /*       // Set up basic touch listeners - let dispatchTouchEvent handle the complex routing
 lorieParent.setOnTouchListener((v, event) -> {
     // Don't handle touches when drawer is open
     if (drawerLayout != null && drawerLayout.isDrawerOpen(GravityCompat.START)) {
@@ -1887,7 +1888,83 @@ isResumed = true;
         return isTouchPointInView((View) getDisplayTerminalToolbarViewPager(), (int) event.getRawX(), (int) event.getRawY());
     }
     
-    
+    // ================== NEW REAL PROCESS LISTING METHODS ==================
+    /**
+     * Returns a list of all processes owned by this app's UID.
+     * Uses /proc filesystem (no root required).
+     */
+    private List<ProcessInfo> getAndroidProcessList() {
+        List<ProcessInfo> list = new ArrayList<>();
+        int myUid = android.os.Process.myUid();
+        File proc = new File("/proc");
+        File[] files = proc.listFiles();
+        if (files == null) return list;
+
+        for (File file : files) {
+            if (!file.isDirectory()) continue;
+            String name = file.getName();
+            if (!name.matches("\\d+")) continue; // only numeric PIDs
+            int pid = Integer.parseInt(name);
+
+            ProcessInfo info = readProcessInfo(pid, myUid);
+            if (info != null) list.add(info);
+        }
+        return list;
+    }
+
+    /**
+     * Reads process info from /proc/[pid]/status and /proc/[pid]/statm.
+     * Returns null if process is not owned by myUid or if status cannot be read.
+     */
+    private ProcessInfo readProcessInfo(int pid, int myUid) {
+        // Read UID and process name from /proc/[pid]/status
+        File statusFile = new File("/proc/" + pid + "/status");
+        if (!statusFile.exists()) return null;
+
+        String procName = null;
+        int uid = -1;
+
+        try (BufferedReader reader = new BufferedReader(new FileReader(statusFile))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (line.startsWith("Uid:")) {
+                    String[] parts = line.split("\\s+");
+                    uid = Integer.parseInt(parts[1]); // real UID
+                    if (uid != myUid) return null;    // filter by our UID
+                } else if (line.startsWith("Name:")) {
+                    procName = line.substring(5).trim();
+                }
+            }
+        } catch (IOException | NumberFormatException e) {
+            return null;
+        }
+
+        if (procName == null) procName = "unknown";
+
+        // Read memory (RSS) from /proc/[pid]/statm
+        long memoryBytes = 0;
+        File statmFile = new File("/proc/" + pid + "/statm");
+        if (statmFile.exists()) {
+            try (BufferedReader reader = new BufferedReader(new FileReader(statmFile))) {
+                String[] parts = reader.readLine().split("\\s+");
+                if (parts.length >= 2) {
+                    long pages = Long.parseLong(parts[1]); // RSS in pages
+                    memoryBytes = pages * 4096; // assume 4KB page size
+                } else if (parts.length >= 1) {
+                    long pages = Long.parseLong(parts[0]); // total program size
+                    memoryBytes = pages * 4096;
+                }
+            } catch (IOException | NumberFormatException ignored) {}
+        }
+
+        // affinityMask: set to all CPUs (irrelevant for Android processes but required by constructor)
+        int numCores = Runtime.getRuntime().availableProcessors();
+        int affinityMask = (1 << numCores) - 1; // all CPUs
+
+        return new ProcessInfo(pid, procName, memoryBytes, affinityMask, false);
+    }
+    // ======================================================================
+
     // Add this class inside MainActivity.java (but outside MainActivity class)
 public static class DrawerPreferenceFragment extends PreferenceFragmentCompat 
         implements Preference.OnPreferenceClickListener, Preference.OnPreferenceChangeListener {

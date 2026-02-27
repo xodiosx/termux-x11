@@ -9,7 +9,6 @@ import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Typeface;
 import android.os.Binder;
-import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
@@ -24,20 +23,29 @@ import android.view.ViewGroup;
 import android.widget.TextView;
 import android.widget.FrameLayout;
 
+import com.termux.x11.controller.core.CPUStatus;      // for CPU frequency
+import com.termux.x11.controller.core.StringUtils;    // for memory formatting
+import com.termux.x11.controller.winhandler.TaskManagerDialog;
+
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
 import java.io.InputStreamReader;
 import java.lang.ref.WeakReference;
-import java.util.ArrayList;
 import java.util.Locale;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
+/**
+ * HUD service that shows FPS, CPU temp, CPU frequency %, GPU info, and memory.
+ * GPU info is read from /sdcard/gpuinfo (written by the Linux container).
+ * Falls back to Android system properties if the file is unavailable.
+ */
 public class HudService extends Service {
 
     private static final String TAG = "HudService";
+    private static final String GPU_INFO_FILE = "/sdcard/gpuinfo";
 
     /* ---------- ACTIVITY ATTACHMENT ---------- */
     private WeakReference<Activity> activityRef;
@@ -45,8 +53,8 @@ public class HudService extends Service {
     private boolean attached = false;
 
     /* ---------- THREADING ---------- */
-    private ScheduledExecutorService hudScheduler;   // for HUD refresh (2 sec)
-    private ScheduledExecutorService gpuScheduler;   // for GPU commands (5 sec)
+    private ScheduledExecutorService hudScheduler;
+    private ScheduledExecutorService gpuScheduler;
     private Handler mainHandler;
 
     /* ---------- FPS ---------- */
@@ -55,15 +63,11 @@ public class HudService extends Service {
     private Thread fpsThread;
     private volatile boolean fpsRunning = true;
 
-    /* ---------- CPU (whole app) ---------- */
-    private long lastAppCpuTicks = 0;
-    private long lastWallTimeMs = 0;
-
-    /* ---------- GPU (from container) ---------- */
+    /* ---------- GPU (simplified) ---------- */
     private volatile String openGLRenderer = "OGL: ...";
     private volatile String vulkanDeviceName = "VK: ...";
 
-    /* ---------- MEM / TEMP ---------- */
+    /* ---------- MEM / TEMP / CPU FREQ ---------- */
     private String totalRam;
 
     /* ===================== SERVICE ===================== */
@@ -82,7 +86,7 @@ public class HudService extends Service {
         mainHandler = new Handler(Looper.getMainLooper());
         totalRam = getTotalRam();
         startFpsReader();
-        startGpuInfoFetcher();   // periodically run glxinfo/vulkaninfo
+        startGpuInfoFetcher();
         startHudLoop();
     }
 
@@ -98,7 +102,7 @@ public class HudService extends Service {
 
             hudView = new TextView(act);
             hudView.setTypeface(Typeface.MONOSPACE);
-            hudView.setTextSize(12);               // initial size, will be adjusted
+            hudView.setTextSize(12);
             hudView.setPadding(12, 6, 12, 6);
             hudView.setBackgroundColor(Color.argb(160, 0, 0, 0));
 
@@ -137,7 +141,6 @@ public class HudService extends Service {
     private void startHudLoop() {
         hudScheduler = Executors.newSingleThreadScheduledExecutor();
         hudScheduler.scheduleAtFixedRate(() -> {
-            // Build the full HUD text on background thread
             String fullText = buildHudText();
             SpannableString colored = colorizeText(fullText);
 
@@ -150,97 +153,34 @@ public class HudService extends Service {
         }, 0, 2, TimeUnit.SECONDS);
     }
 
-    /* ===================== GPU INFO FETCHER (container) ===================== */
-
-    private void startGpuInfoFetcher() {
-        gpuScheduler = Executors.newSingleThreadScheduledExecutor();
-        gpuScheduler.scheduleAtFixedRate(this::fetchGpuInfoFromContainer, 0, 5, TimeUnit.SECONDS);
-    }
-
-    private void fetchGpuInfoFromContainer() {
-        try {
-            // Commands to run inside the Linux container (same environment as Termux X11)
-            String[] cmd = {
-                    "/bin/sh", "-c",
-                    "export DISPLAY=$DISPLAY; export PATH=$PATH; " +
-                    "OGLGPU=$(glxinfo -B 2>/dev/null | awk -F: '/OpenGL renderer string/ {gsub(/^[ \\t]+|[ \\t]+$/,\"\",$2); print $2}'); " +
-                    "VKGPU=$(vulkaninfo 2>/dev/null | awk -F= '/deviceName/ {gsub(/^[ \\t]+|[ \\t]+$/,\"\",$2); print $2}' | head -n1); " +
-                    "echo \"OGL:$OGLGPU\"; echo \"VK:$VKGPU\""
-            };
-
-            ProcessBuilder pb = new ProcessBuilder(cmd);
-            pb.redirectErrorStream(true);
-            Process process = pb.start();
-
-            BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
-            String line;
-            String ogl = null;
-            String vk = null;
-            while ((line = reader.readLine()) != null) {
-                if (line.startsWith("OGL:")) {
-                    ogl = line.substring(4).trim();
-                    if (ogl.isEmpty()) ogl = null;
-                } else if (line.startsWith("VK:")) {
-                    vk = line.substring(3).trim();
-                    if (vk.isEmpty()) vk = null;
-                }
-            }
-            int exitCode = process.waitFor();
-
-            if (exitCode == 0 && (ogl != null || vk != null)) {
-                if (ogl != null) openGLRenderer = "OGL: " + ogl;
-                if (vk != null) vulkanDeviceName = "VK: " + vk;
-            } else {
-                // fallback to Android system properties
-                fallbackGpuInfo();
-            }
-        } catch (Exception e) {
-            Log.e(TAG, "Failed to run container GPU commands", e);
-            fallbackGpuInfo();
-        }
-    }
-
-    private void fallbackGpuInfo() {
-        String ogl = getProp("ro.hardware.egl");
-        String vk = getProp("ro.hardware.vulkan");
-        if (ogl == null || ogl.isEmpty()) ogl = getProp("ro.board.platform");
-        if (vk == null || vk.isEmpty()) vk = ogl; // fallback to same
-
-        openGLRenderer = "OGL: " + (ogl != null ? ogl : "Unknown");
-        vulkanDeviceName = "VK: " + (vk != null ? vk : "Unknown");
-    }
-
-    /* ===================== BUILD SINGLE‑LINE HUD ===================== */
+    /* ===================== BUILD HUD TEXT ===================== */
 
     private String buildHudText() {
         String fps = fpsText;
-        String temp = getCpuTemp();          // e.g. "CPU: 45.2°C"
-        String cpu = getCpuUsage();
-        String mem = getMemoryInfo();
+        String temp = getCpuTemp();
+        String cpuFreq = getCpuFreqPercent();          // now uses CPUStatus
+        String mem = getMemoryInfo();                   // uses StringUtils internally
 
-        // Combine everything into one line
-        return fps + " | " + temp + " | " + cpu + " | " +
+        return fps + " | " + temp + " | " + cpuFreq + " | " +
                openGLRenderer + " | " + vulkanDeviceName + " | " + mem;
     }
 
     private SpannableString colorizeText(String full) {
         SpannableString s = new SpannableString(full);
 
-        // FPS color
         color(s, fpsText, fpsValue >= 0 && fpsValue < 10 ? Color.RED : Color.GREEN);
 
-        // Temperature color
         float tempVal = getCpuTempValue();
         color(s, getCpuTemp(), tempColor(tempVal));
 
-        // CPU usage always yellow
-        color(s, getCpuUsage(), Color.YELLOW);
+        // Color CPU frequency based on percentage
+        int cpuFreqPercent = getCpuFreqRawPercent();
+        color(s, getCpuFreqPercent(), cpuFreqPercent < 20 ? Color.RED :
+                (cpuFreqPercent < 50 ? Color.YELLOW : Color.GREEN));
 
-        // OGL and VK lines magenta
         color(s, openGLRenderer, Color.MAGENTA);
         color(s, vulkanDeviceName, Color.MAGENTA);
 
-        // Memory red if < 800 MB available
         long availMB = getAvailableMemoryMB();
         color(s, getMemoryInfo(), (availMB >= 0 && availMB < 800) ? Color.RED : Color.CYAN);
 
@@ -263,39 +203,35 @@ public class HudService extends Service {
         else return Color.CYAN;
     }
 
-    /* ===================== AUTO‑FIT TEXT SIZE ===================== */
-
     private void adjustTextSizeToFit(TextView textView, String text) {
         if (textView == null || text == null) return;
 
         Activity act = activityRef != null ? activityRef.get() : null;
         if (act == null) return;
 
-        // Get screen width minus horizontal margins/padding
         DisplayMetrics metrics = new DisplayMetrics();
         act.getWindowManager().getDefaultDisplay().getMetrics(metrics);
         int screenWidth = metrics.widthPixels;
-        int availableWidth = screenWidth - textView.getPaddingLeft() - textView.getPaddingRight() - 16; // 16 for left/right margins
+        int availableWidth = screenWidth - textView.getPaddingLeft() - textView.getPaddingRight() - 16;
 
         Paint paint = new Paint();
         paint.setTypeface(textView.getTypeface());
-        paint.setTextSize(textView.getTextSize()); // current size in pixels
+        paint.setTextSize(textView.getTextSize());
 
         float textWidth = paint.measureText(text);
-        if (textWidth <= availableWidth) return; // fits
+        if (textWidth <= availableWidth) return;
 
-        // Reduce text size until it fits (or reaches min 8sp)
-        float minSizePx = 8 * metrics.density; // 8sp in pixels
+        float minSizePx = 8 * metrics.density;
         float newSizePx = textView.getTextSize();
         while (newSizePx > minSizePx && textWidth > availableWidth) {
             newSizePx -= 1;
             paint.setTextSize(newSizePx);
             textWidth = paint.measureText(text);
         }
-        textView.setTextSize(newSizePx / metrics.density); // convert back to sp
+        textView.setTextSize(newSizePx / metrics.density);
     }
 
-    /* ===================== FPS READER (unchanged) ===================== */
+    /* ===================== FPS READER ===================== */
 
     private void startFpsReader() {
         fpsThread = new Thread(() -> {
@@ -332,89 +268,42 @@ public class HudService extends Service {
         } catch (Exception ignored) {}
     }
 
-    /* ===================== CPU USAGE (unchanged) ===================== */
+    /* ===================== CPU FREQUENCY PERCENTAGE (matches task manager) ===================== */
 
-    private int[] getAppPids() {
-        int uid = android.os.Process.myUid();
-        ArrayList<Integer> pids = new ArrayList<>();
+    /**
+     * Returns a string like "CPUf: 45%" based on average current frequency / max frequency.
+     */
+    private String getCpuFreqPercent() {
+        int percent = getCpuFreqRawPercent();
+        if (percent < 0) return "CPUf: N/A";
+        return "CPUf: " + percent + "%";
+    }
 
-        File proc = new File("/proc");
-        File[] files = proc.listFiles();
-        if (files == null) return new int[0];
+    /**
+     * Returns raw percentage (0–100) or -1 if unable to read.
+     */
+    private int getCpuFreqRawPercent() {
+        try {
+            short[] current = CPUStatus.getCurrentClockSpeeds();
+            if (current == null || current.length == 0) return -1;
 
-        for (File f : files) {
-            if (!f.isDirectory()) continue;
-
-            int pid;
-            try {
-                pid = Integer.parseInt(f.getName());
-            } catch (NumberFormatException e) {
-                continue;
+            int totalCurrent = 0;
+            int totalMax = 0;
+            for (int i = 0; i < current.length; i++) {
+                short max = CPUStatus.getMaxClockSpeed(i);
+                if (max <= 0) return -1;   // invalid max
+                totalCurrent += current[i];
+                totalMax += max;
             }
-
-            try (BufferedReader br =
-                         new BufferedReader(new FileReader("/proc/" + pid + "/status"))) {
-                String line;
-                while ((line = br.readLine()) != null) {
-                    if (line.startsWith("Uid:")) {
-                        String[] parts = line.split("\\s+");
-                        int procUid = Integer.parseInt(parts[1]);
-                        if (procUid == uid) {
-                            pids.add(pid);
-                        }
-                        break;
-                    }
-                }
-            } catch (Exception ignored) {}
-        }
-
-        int[] out = new int[pids.size()];
-        for (int i = 0; i < pids.size(); i++) out[i] = pids.get(i);
-        return out;
-    }
-
-    private long readProcessCpuTicks(int pid) {
-        try (BufferedReader br =
-                     new BufferedReader(new FileReader("/proc/" + pid + "/stat"))) {
-
-            String[] t = br.readLine().split("\\s+");
-            long utime = Long.parseLong(t[13]);
-            long stime = Long.parseLong(t[14]);
-            return utime + stime;
-
+            // average percentage = (totalCurrent / totalMax) * 100
+            return (int) ((totalCurrent * 100L) / totalMax);
         } catch (Exception e) {
-            return 0;
+            Log.e(TAG, "Failed to read CPU frequencies", e);
+            return -1;
         }
     }
 
-    private String getCpuUsage() {
-        long now = SystemClock.elapsedRealtime();
-        int[] pids = getAppPids();
-
-        long totalCpuTicks = 0;
-        for (int pid : pids) {
-            totalCpuTicks += readProcessCpuTicks(pid);
-        }
-
-        if (lastWallTimeMs == 0) {
-            lastWallTimeMs = now;
-            lastAppCpuTicks = totalCpuTicks;
-            return "CPU: ...";
-        }
-
-        long dCpu = totalCpuTicks - lastAppCpuTicks;
-        long dTime = now - lastWallTimeMs;
-
-        lastWallTimeMs = now;
-        lastAppCpuTicks = totalCpuTicks;
-
-        if (dTime <= 0) return "CPU: 0%";
-
-        float usage = (dCpu * 1000f) / dTime;  // ticks (10ms) to percent
-        return String.format(Locale.US, "CPU: %.1f%%", usage);
-    }
-
-    /* ===================== CPU TEMPERATURE (unchanged) ===================== */
+    /* ===================== CPU TEMPERATURE ===================== */
 
     private String getCpuTemp() {
         for (int i = 0; i < 10; i++) {
@@ -448,21 +337,22 @@ public class HudService extends Service {
         return -1;
     }
 
-    /* ===================== MEMORY (unchanged) ===================== */
+    /* ===================== MEMORY (using StringUtils) ===================== */
 
     private String getMemoryInfo() {
         ActivityManager am = (ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
         ActivityManager.MemoryInfo mi = new ActivityManager.MemoryInfo();
         am.getMemoryInfo(mi);
         long used = mi.totalMem - mi.availMem;
-        return "MEM: " + formatBytes(used) + " / " + totalRam;
+        // Use StringUtils.formatBytes with shortFormat = false (like task manager)
+        return "MEM: " + StringUtils.formatBytes(used, false) + " / " + totalRam;
     }
 
     private String getTotalRam() {
         ActivityManager am = (ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
         ActivityManager.MemoryInfo mi = new ActivityManager.MemoryInfo();
         am.getMemoryInfo(mi);
-        return formatBytes(mi.totalMem);
+        return StringUtils.formatBytes(mi.totalMem, false);
     }
 
     private long getAvailableMemoryMB() {
@@ -476,13 +366,78 @@ public class HudService extends Service {
         }
     }
 
-    private String formatBytes(long b) {
-        int e = (int) (Math.log(b) / Math.log(1024));
-        return String.format(Locale.US, "%.1f %sB",
-                b / Math.pow(1024, e), "KMGTPE".charAt(e - 1));
+    /* ===================== GPU INFO FETCHER (unchanged) ===================== */
+
+    private void startGpuInfoFetcher() {
+        gpuScheduler = Executors.newSingleThreadScheduledExecutor();
+        gpuScheduler.scheduleAtFixedRate(this::fetchGpuInfo, 0, 5, TimeUnit.SECONDS);
     }
 
-    /* ===================== SYSTEM PROPERTY HELPER ===================== */
+    private void fetchGpuInfo() {
+        if (readGpuInfoFromFile()) {
+            return;
+        }
+        fallbackGpuInfo();
+    }
+
+    private boolean readGpuInfoFromFile() {
+        File file = new File(GPU_INFO_FILE);
+        if (!file.exists()) return false;
+
+        try (BufferedReader br = new BufferedReader(new FileReader(file))) {
+            String line;
+            String ogl = null;
+            String vk = null;
+            while ((line = br.readLine()) != null) {
+                if (line.startsWith("OGL=")) {
+                    ogl = line.substring(4).trim();
+                } else if (line.startsWith("VK=")) {
+                    vk = line.substring(3).trim();
+                }
+            }
+            boolean updated = false;
+            if (ogl != null && !ogl.isEmpty()) {
+                openGLRenderer = "OGL: " + simplifyGpuString(ogl);
+                updated = true;
+            }
+            if (vk != null && !vk.isEmpty()) {
+                vulkanDeviceName = "VK: " + simplifyGpuString(vk);
+                updated = true;
+            }
+            return updated;
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to read GPU info file", e);
+            return false;
+        }
+    }
+
+    private void fallbackGpuInfo() {
+        String ogl = getProp("ro.hardware.egl");
+        String vk = getProp("ro.hardware.vulkan");
+        if (ogl == null || ogl.isEmpty()) ogl = getProp("ro.board.platform");
+        if (vk == null || vk.isEmpty()) vk = ogl;
+
+        openGLRenderer = "OGL: " + simplifyGpuString(ogl != null ? ogl : "Unknown");
+        vulkanDeviceName = "VK: " + simplifyGpuString(vk != null ? vk : "Unknown");
+    }
+
+    private String simplifyGpuString(String raw) {
+        if (raw == null || raw.isEmpty()) return "?";
+        String lower = raw.toLowerCase();
+        String[] keywords = {
+            "gl4es", "zink", "virgl", "softpipe", "swrast", "llvm",
+            "turnip", "venus", "wrapper", "panfrost", "v3d",
+            "adreno", "mali", "powervr", "nvidia", "geforce", "radeon", "amd", "intel", "iris", "virtio"
+        };
+        for (String kw : keywords) {
+            if (lower.contains(kw)) {
+                int idx = lower.indexOf(kw);
+                return raw.substring(idx, idx + kw.length());
+            }
+        }
+        String[] parts = raw.trim().split("\\s+");
+        return parts[0];
+    }
 
     private String getProp(String key) {
         try {

@@ -127,11 +127,15 @@ public class CmdEntryPoint extends ICmdEntryInterface.Stub {
     // In some cases Android Activity part can not connect opened port.
     // In this case opened port works like a lock file.
     private void sendBroadcastDelayed() {
+    try {
         if (!connected())
             sendBroadcast(intent);
-
-        handler.postDelayed(this::sendBroadcastDelayed, 1000);
+    } catch (Exception e) {
+        // silently ignore, prevents spam logs
     }
+
+    handler.postDelayed(this::sendBroadcastDelayed, 1000);
+}
 
     void spawnListeningThread() {
         new Thread(this::listenForConnections).start();
@@ -205,3 +209,4 @@ public class CmdEntryPoint extends ICmdEntryInterface.Stub {
         }
     }
 }
+

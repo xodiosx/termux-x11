@@ -1471,14 +1471,18 @@ isResumed = true;
         getLorieView().requestFocus();
     }
 
-    @Override
+        @Override
     public void onPause() {
   //  inputMethodManager.hideSoftInputFromWindow(getWindow().getDecorView().getRootView().getWindowToken(), 0);
 
         for (StatusBarNotification notification: mNotificationManager.getActiveNotifications())
             if (notification.getId() == mNotificationId)
                 mNotificationManager.cancel(mNotificationId);
-
+   
+     if (isBound && hudService != null) {
+        hudService.detach();
+        hudService.stopFpsReader(); // <--- stop logcat here
+    }
         super.onPause();
         isResumed = false;
         finish();
@@ -1487,7 +1491,6 @@ isResumed = true;
         hudService.detach();
     }
     }
-
     public LorieView getLorieView() {
         return findViewById(R.id.lorieView);
     }

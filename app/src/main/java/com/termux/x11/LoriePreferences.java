@@ -839,7 +839,7 @@ if (p.getKey().contentEquals("start_debug")) {
            requireContext().sendBroadcast(new Intent(ACTION_PREFERENCES_CHANGED) {{
                putExtra("key", key);
                putExtra("fromBroadcast", true);
-               setPackage("com.termux.x11");
+               setPackage("com.xodos");
 setPackage(requireContext().getPackageName());
 
             }});

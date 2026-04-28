@@ -22,7 +22,7 @@
     android:name=".MainActivity"
     android:theme="@style/AppTheme"
     android:supportsPictureInPicture="true"
-    android:configChanges="..."
+android:configChanges="fontScale|orientation|screenSize|keyboard|keyboardHidden|layoutDirection|locale|mcc|mnc|navigation|screenLayout|touchscreen|uiMode|smallestScreenSize|density"
     android:resizeableActivity="true"
     android:windowSoftInputMode="stateHidden"
     android:exported="true"
@@ -33,9 +33,7 @@
     <!-- Remove the SECONDARY_HOME intent filter -->
 </activity>
           
-            <!-- android:taskAffinity=".MainActivity" -->
-            <!-- android:launchMode="singleInstance" -->
-        </activity>
+           
            <!--termux-x11-->
         <activity
             android:name="com.termux.x11.controller.ControlsEditorActivity"

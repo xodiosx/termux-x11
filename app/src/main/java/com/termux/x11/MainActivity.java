@@ -189,7 +189,8 @@ public class MainActivity extends LoriePreferences {
     protected ICmdEntryInterface service = null;
     public TermuxX11ExtraKeys mExtraKeys;
     private Notification mNotification;
-    private final int mNotificationId = 7897;
+  //  private final int mNotificationId = 7897;
+    public static final int mNotificationId = 7897;
     NotificationManager mNotificationManager;
     static InputMethodManager inputMethodManager;
     private boolean mClientConnected = false;
@@ -1471,14 +1472,15 @@ isResumed = true;
         getLorieView().requestFocus();
     }
 
-        @Override
+    @Override
     public void onPause() {
   //  inputMethodManager.hideSoftInputFromWindow(getWindow().getDecorView().getRootView().getWindowToken(), 0);
 
         for (StatusBarNotification notification: mNotificationManager.getActiveNotifications())
             if (notification.getId() == mNotificationId)
                 mNotificationManager.cancel(mNotificationId);
-        
+   
+     
         super.onPause();
         isResumed = false;
         finish();
@@ -1487,6 +1489,7 @@ isResumed = true;
         hudService.detach();
     }
     }
+
     public LorieView getLorieView() {
         return findViewById(R.id.lorieView);
     }

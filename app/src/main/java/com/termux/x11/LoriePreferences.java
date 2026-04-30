@@ -839,7 +839,7 @@ if (p.getKey().contentEquals("start_debug")) {
            requireContext().sendBroadcast(new Intent(ACTION_PREFERENCES_CHANGED) {{
                putExtra("key", key);
                putExtra("fromBroadcast", true);
-               setPackage("com.termux.x11");
+               setPackage("com.xodos");
 setPackage(requireContext().getPackageName());
 
             }});
@@ -1070,7 +1070,7 @@ setPackage(requireContext().getPackageName());
 
             in.detachFd();
             bundle.putBinder(null, iface);
-            i.setPackage("com.termux.x11");
+            i.setPackage("com.termux");
             i.putExtra(null, bundle);
             if (getuid() == 0 || getuid() == 2000)
                 i.setFlags(0x00400000 /* FLAG_RECEIVER_FROM_SHELL */);

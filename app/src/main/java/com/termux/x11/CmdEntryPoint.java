@@ -127,11 +127,15 @@ public class CmdEntryPoint extends ICmdEntryInterface.Stub {
     // In some cases Android Activity part can not connect opened port.
     // In this case opened port works like a lock file.
     private void sendBroadcastDelayed() {
+    try {
         if (!connected())
             sendBroadcast(intent);
-
-        handler.postDelayed(this::sendBroadcastDelayed, 1000);
+    } catch (Exception e) {
+        // silently ignore, prevents spam logs
     }
+
+    handler.postDelayed(this::sendBroadcastDelayed, 1000);
+}
 
     void spawnListeningThread() {
         new Thread(this::listenForConnections).start();
@@ -189,7 +193,8 @@ public class CmdEntryPoint extends ICmdEntryInterface.Stub {
         String libPath = res != null ? res.getFile().replace("file:", "") : null;
         if (libPath != null) {
             try {
-                System.load(libPath);
+                // System.load(libPath);
+                System.loadLibrary("Xlorie");
             } catch (Exception e) {
                 Log.e("CmdEntryPoint", "Failed to dlopen " + libPath, e);
                 System.err.println("Failed to load native library. Did you install the right apk? Try the universal one.");
@@ -204,3 +209,4 @@ public class CmdEntryPoint extends ICmdEntryInterface.Stub {
         }
     }
 }
+

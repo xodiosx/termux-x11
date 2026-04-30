@@ -670,6 +670,10 @@ public boolean onGenericMotionEvent(MotionEvent event) {
 
     private void init() {
         getHolder().addCallback(mSurfaceCallback);
+          // This bypasses the Flutter background and gives the module the
+    // same fast hardware‑scanout path the standalone APK uses.
+    setZOrderOnTop(true);
+    getHolder().setFormat(android.graphics.PixelFormat.OPAQUE);
         clipboard = (ClipboardManager) getContext().getSystemService(Context.CLIPBOARD_SERVICE);
         nativeInit();
         screenInfo = new ScreenInfo(this);
@@ -835,31 +839,26 @@ public boolean onGenericMotionEvent(MotionEvent event) {
         return MainActivity.getInstance().handleKey(event);
     }
 
-@Override
-public boolean dispatchKeyEvent(KeyEvent event) {
-    if (imeBuggyKeys.contains(event.getKeyCode())) {
-        // remove messages we posted in dispatchKeyEventPreIme
-        int action = event.getAction();
-        if (action == KeyEvent.ACTION_UP)
-            keyReleaseHandler.removeMessages(event.getKeyCode());
-    }
-    
-    int k = event.getKeyCode();
-    if (k == KEYCODE_BACK) {
-        // Only convert mouse BACK to right click
-        if (event.isFromSource(InputDevice.SOURCE_MOUSE) || event.isFromSource(InputDevice.SOURCE_MOUSE_RELATIVE)) {
-            if (event.getRepeatCount() != 0) // ignore auto-repeat
-                return true;
-            if (event.getAction() == KeyEvent.ACTION_UP || event.getAction() == KeyEvent.ACTION_DOWN)
-                sendMouseEvent(-1, -1, InputStub.BUTTON_RIGHT, event.getAction() == KeyEvent.ACTION_DOWN, true);
-            return true;
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        if (imeBuggyKeys.contains(event.getKeyCode())) {
+            // remove messages we posted in dispatchKeyEventPreIme
+            int action = event.getAction();
+            if (action == KeyEvent.ACTION_UP)
+                keyReleaseHandler.removeMessages(event.getKeyCode());
         }
-        // For hardware/software back button, let the Activity handle it
-        return false;
+        int k = event.getKeyCode();
+        if (k == KEYCODE_BACK) {
+            if (event.isFromSource(InputDevice.SOURCE_MOUSE) || event.isFromSource(InputDevice.SOURCE_MOUSE_RELATIVE)) {
+                if (event.getRepeatCount() != 0) // ignore auto-repeat
+                    return true;
+                if (event.getAction() == KeyEvent.ACTION_UP || event.getAction() == KeyEvent.ACTION_DOWN)
+                    sendMouseEvent(-1, -1, InputStub.BUTTON_RIGHT, event.getAction() == KeyEvent.ACTION_DOWN, true);
+                return true;
+            }
+        }
+        return super.dispatchKeyEvent(event);
     }
-    
-    return super.dispatchKeyEvent(event);
-}
 
     ClipboardManager.OnPrimaryClipChangedListener clipboardListener = this::handleClipboardChange;
 
@@ -1022,3 +1021,4 @@ public boolean dispatchKeyEvent(KeyEvent event) {
         System.loadLibrary("Xlorie");
     }
 }
+

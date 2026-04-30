@@ -1,13 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
-    android:sharedUserId="com.termux">
+    >
+
+    <uses-feature
+        android:glEsVersion="0x00020000"
+        android:required="true" />
+    <uses-feature
+        android:name="android.hardware.vr.headtracking"
+        android:required="false" />
+    <uses-feature
+        android:name="com.oculus.feature.PASSTHROUGH"
+        android:required="false" />
+    <uses-feature
+        android:name="oculus.software.overlay_keyboard"
+        android:required="false" />
 
     <!-- ================= CORE TERMUX PERMISSIONS ================= -->
 
     <!-- Required for long-running background + HUD -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+      
+    <uses-permission android:name="android.permission.GET_TASKS" />
 
     <!-- Needed for logcat visibility (effective only with shared UID / debuggable) -->
     <uses-permission android:name="android.permission.READ_LOGS" />

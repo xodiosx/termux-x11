@@ -836,13 +836,14 @@ if (p.getKey().contentEquals("start_debug")) {
 
 
 
-           requireContext().sendBroadcast(new Intent(ACTION_PREFERENCES_CHANGED) {{
+       /*    requireContext().sendBroadcast(new Intent(ACTION_PREFERENCES_CHANGED) {{
                putExtra("key", key);
                putExtra("fromBroadcast", true);
                setPackage("com.xodos");
 setPackage(requireContext().getPackageName());
 
             }});
+            */
             if ("enableFloatBallMenu".contentEquals(key)) {
                 prefs.enableFloatBallMenu.put((Boolean) newValue);
             }
@@ -1070,7 +1071,7 @@ setPackage(requireContext().getPackageName());
 
             in.detachFd();
             bundle.putBinder(null, iface);
-            i.setPackage("com.termux");
+            i.setPackage("com.xodos");
             i.putExtra(null, bundle);
             if (getuid() == 0 || getuid() == 2000)
                 i.setFlags(0x00400000 /* FLAG_RECEIVER_FROM_SHELL */);

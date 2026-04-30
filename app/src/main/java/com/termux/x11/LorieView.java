@@ -669,33 +669,13 @@ public boolean onGenericMotionEvent(MotionEvent event) {
     }
 
     private void init() {
-    getHolder().addCallback(mSurfaceCallback);
-    setZOrderOnTop(true);
-    getHolder().setFormat(android.graphics.PixelFormat.OPAQUE);
-    setOpaque(true);                             // marks the view as opaque
-    clipboard = (ClipboardManager) getContext().getSystemService(Context.CLIPBOARD_SERVICE);
-    nativeInit();
-    screenInfo = new ScreenInfo(this);
-    cursorLocker = new CursorLocker(this);
-}
+        getHolder().addCallback(mSurfaceCallback);
+        clipboard = (ClipboardManager) getContext().getSystemService(Context.CLIPBOARD_SERVICE);
+        nativeInit();
+        screenInfo = new ScreenInfo(this);
+        cursorLocker = new CursorLocker(this);
+    }
 
-public void triggerCallback() {
-    setFocusable(true);
-    setFocusableInTouchMode(true);
-    requestFocus();
-
-    setBackground(new ColorDrawable(Color.BLACK) {   // <-- changed from TRANSPARENT to BLACK
-        public boolean isStateful() {
-            return true;
-        }
-        public boolean hasFocusStateSpecified() {
-            return true;
-        }
-    });
-
-    Rect r = getHolder().getSurfaceFrame();
-    getActivity().runOnUiThread(() -> mSurfaceCallback.surfaceChanged(getHolder(), PixelFormat.BGRA_8888, r.width(), r.height()));
-}
     public void setCallback(Callback callback) {
         mCallback = callback;
         triggerCallback();
@@ -710,7 +690,24 @@ public void triggerCallback() {
         triggerCallback();
     }
 
-    
+    public void triggerCallback() {
+        setFocusable(true);
+        setFocusableInTouchMode(true);
+        requestFocus();
+
+        setBackground(new ColorDrawable(Color.TRANSPARENT) {
+            public boolean isStateful() {
+                return true;
+            }
+
+            public boolean hasFocusStateSpecified() {
+                return true;
+            }
+        });
+
+        Rect r = getHolder().getSurfaceFrame();
+        getActivity().runOnUiThread(() -> mSurfaceCallback.surfaceChanged(getHolder(), PixelFormat.BGRA_8888, r.width(), r.height()));
+    }
 
     private Activity getActivity() {
         Context context = getContext();

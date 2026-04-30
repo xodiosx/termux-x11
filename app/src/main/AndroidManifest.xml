@@ -1,39 +1,61 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
-    android:installLocation="internalOnly">
+    android:sharedUserId="com.termux">
 
+    <!-- ================= CORE TERMUX PERMISSIONS ================= -->
+
+    <!-- Required for long-running background + HUD -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" tools:ignore="ProtectedPermissions" />
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!-- Needed for logcat visibility (effective only with shared UID / debuggable) -->
+    <uses-permission android:name="android.permission.READ_LOGS" />
+
+    <!-- Some native/system logs go through dump -->
+    <uses-permission android:name="android.permission.DUMP" />
+
+    <!-- Storage (Termux legacy behavior) -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+    <uses-permission
+        android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+        tools:ignore="ScopedStorage" />
+
+    <!-- Overlay / HUD -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
-   <uses-permission android:name="android.permission.READ_LOGS" />
+
+    <!-- Notifications -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Battery survival -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
     <!-- Audio / input parity with Termux -->
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.VIBRATE" />
+
 
 
     <application
         android:supportsRtl="true"
         android:hardwareAccelerated="true"
         tools:ignore="DataExtractionRules,GoogleAppIndexingWarning">
-       <activity
-    android:name=".MainActivity"
-    android:theme="@style/AppTheme"
-    android:supportsPictureInPicture="true"
-android:configChanges="fontScale|orientation|screenSize|keyboard|keyboardHidden|layoutDirection|locale|mcc|mnc|navigation|screenLayout|touchscreen|uiMode|smallestScreenSize|density"
-    android:resizeableActivity="true"
-    android:windowSoftInputMode="stateHidden"
-    android:exported="true"
-    android:process=":x11"
-    android:launchMode="singleTask"
-    android:taskAffinity="com.termux.x11.Task"
-    android:excludeFromRecents="true">
-    <!-- Remove the SECONDARY_HOME intent filter -->
-</activity>
-          
-           
+        <activity
+            android:name=".MainActivity"
+            android:theme="@style/AppTheme"
+            android:supportsPictureInPicture="true"
+            android:configChanges="fontScale|orientation|screenSize|keyboard|keyboardHidden|layoutDirection|locale|mcc|mnc|navigation|screenLayout|touchscreen|uiMode|smallestScreenSize|density"
+            android:resizeableActivity="true"
+            android:windowSoftInputMode="stateHidden"
+            android:exported="true"
+            android:process=":x11">
+            <intent-filter>
+                <category android:name="android.intent.category.SECONDARY_HOME" />
+            </intent-filter>
+            <!-- android:taskAffinity=".MainActivity" -->
+            <!-- android:launchMode="singleInstance" -->
+        </activity>
            <!--termux-x11-->
         <activity
             android:name="com.termux.x11.controller.ControlsEditorActivity"

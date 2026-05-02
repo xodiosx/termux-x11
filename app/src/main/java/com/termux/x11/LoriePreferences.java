@@ -113,7 +113,7 @@ public class LoriePreferences extends AppCompatActivity implements PreferenceFra
     static final String ACTION_PREFERENCES_CHANGED = "com.termux.x11.ACTION_PREFERENCES_CHANGED";
     public static Prefs prefs = null;
     
-//private static final String USR_PREFIX = "/data/data/com.termux/files/usr";
+//private static final String USR_PREFIX = "/data/data/com.xodos/files/usr";
     // Add this flag
     private boolean isSettingsActivity = false;
     
@@ -1020,7 +1020,7 @@ setPackage(requireContext().getPackageName());
                         intent0.putExtra("key", key);
                         intent0.putExtra("fromBroadcast", true);
                     //
-                    intent0.setPackage(context.getPackageName());
+                    intent0.setPackage("com.xodos");
                         context.sendBroadcast(intent0);
                     }
                     edit.commit();

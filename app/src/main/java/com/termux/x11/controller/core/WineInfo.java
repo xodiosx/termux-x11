@@ -55,7 +55,7 @@ public class WineInfo implements Parcelable {
     public String getExecutable(Context context, boolean wow64Mode) {
         if (this == MAIN_WINE_VERSION) {
 //            File wineBinDir = new File(ImageFs.find(context).getRootDir(), "/opt/wine/bin");
-            File wineBinDir = new File("/data/data/com.termux/files/usr/glibc/", "opt/wine/bin");
+            File wineBinDir = new File("/data/data/com.xodos/files/usr/", "opt/winece/bin");
             File wineBinFile = new File(wineBinDir, "wine");
             File winePreloaderBinFile = new File(wineBinDir, "wine-preloader");
             FileUtils.copy(new File(wineBinDir, wow64Mode ? "wine-wow64" : "wine32"), wineBinFile);
@@ -108,7 +108,7 @@ public class WineInfo implements Parcelable {
         if (identifier.equals(MAIN_WINE_VERSION.identifier())) return MAIN_WINE_VERSION;
         Matcher matcher = pattern.matcher(identifier);
         if (matcher.find()) {
-            File installedWineDir = new File("/data/data/com.termux/files/usr/glibc/", "opt");
+            File installedWineDir = new File("/data/data/com.xodos/files/usr/", "opt");
             String path = (new File(installedWineDir, identifier)).getPath();
             return new WineInfo(matcher.group(1), matcher.group(2), matcher.group(3), path);
         } else return MAIN_WINE_VERSION;

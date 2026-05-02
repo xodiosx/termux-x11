@@ -505,7 +505,8 @@ mRenderData.offsetX = offsetX;
             case "open preferences":
                 return PendingIntent.getActivity(mActivity, requestCode, new Intent(mActivity, LoriePreferences.class) {{
                     putExtra("key", "value");
-                    setPackage(mActivity.getPackageName());
+                   // setPackage(mActivity.getPackageName());
+                   setPackage("com.xodos");
                     setAction(Intent.ACTION_MAIN);
                 }}, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
             case "restart activity":
@@ -517,7 +518,8 @@ mRenderData.offsetX = offsetX;
             case "release pointer and keyboard capture":
                 return PendingIntent.getBroadcast(mActivity, requestCode, new Intent(MainActivity.ACTION_CUSTOM) {{
                     putExtra("what", name);
-                    setPackage(mActivity.getPackageName());
+                   // setPackage(mActivity.getPackageName());
+                   setPackage("com.xodos");
                 }}, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
             default: return null;
         }

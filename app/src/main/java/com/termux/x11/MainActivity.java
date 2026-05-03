@@ -1481,7 +1481,9 @@ isResumed = true;
         
         super.onPause();
         isResumed = false;
-        finish();
+if (!isInPictureInPictureMode()) {
+    finish();
+}
         //prepareToExit();
     if (isBound && hudService != null) {
         hudService.detach();

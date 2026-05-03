@@ -568,7 +568,8 @@ public void stopDesktop() {
 private void startDebugMode() {
     // Start debug mode
     Toast.makeText(this, "Debug mode started", Toast.LENGTH_SHORT).show();
- //   LogcatLogger.start(this, "termux.x11");
+ //   
+ LogcatLogger.stop();
  LogcatLogger.start(this);
 }
 
@@ -1085,7 +1086,8 @@ mNotificationManager = (NotificationManager) getSystemService(Context.NOTIFICATI
 
     @Override
     protected void onDestroy() {
-    stopHudService();     
+    stopHudService();  
+    LogcatLogger.stop();   
         winHandler.stop();
         unregisterReceiver(receiver);
         super.onDestroy();
@@ -1489,7 +1491,8 @@ if (!isInPictureInPictureMode()) {
     if (isBound && hudService != null) {
         hudService.detach();
     }
-    stopHudService();     
+    stopHudService();  
+LogcatLogger.stop();
     }
     public LorieView getLorieView() {
         return findViewById(R.id.lorieView);

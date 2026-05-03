@@ -1085,6 +1085,7 @@ mNotificationManager = (NotificationManager) getSystemService(Context.NOTIFICATI
 
     @Override
     protected void onDestroy() {
+    stopHudService();     
         winHandler.stop();
         unregisterReceiver(receiver);
         super.onDestroy();
@@ -1488,6 +1489,7 @@ if (!isInPictureInPictureMode()) {
     if (isBound && hudService != null) {
         hudService.detach();
     }
+    stopHudService();     
     }
     public LorieView getLorieView() {
         return findViewById(R.id.lorieView);

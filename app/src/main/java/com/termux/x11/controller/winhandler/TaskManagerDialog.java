@@ -21,6 +21,7 @@ import com.termux.x11.controller.core.ProcessHelper;
 import com.termux.x11.controller.core.StringUtils;
 import com.termux.x11.controller.widget.CPUListView;
 
+import java.io.File;
 import java.io.IOException;
 import java.util.List;
 import java.util.Timer;
@@ -32,15 +33,9 @@ public class TaskManagerDialog extends ContentDialog implements OnGetProcessInfo
     private Timer timer;
     private final Object lock = new Object();
 
-    // Hardcoded environment (matches your proot setup)
-    private static final String[] NATIVE_ENV = {
-        "PREFIX=/data/data/com.xodos/files/usr",
-        "HOME=/data/data/com.xodos/files/home",
-        "TMPDIR=/data/data/com.xodos/files/usr/tmp",
-        "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/data/data/com.xodos/files/usr/bin",
-        "DISPLAY=:4",
-        "XDG_RUNTIME_DIR=/data/data/com.xodos/files/usr/tmp"
-    };
+    // Dynamically set in initEnvironment()
+    private String[] env;
+    private String shellPath;
 
     public TaskManagerDialog(MainActivity activity) {
         super(activity, R.layout.task_manager_dialog);
@@ -48,6 +43,9 @@ public class TaskManagerDialog extends ContentDialog implements OnGetProcessInfo
         setCancelable(false);
         setTitle(R.string.task_manager);
         setIcon(R.drawable.icon_task_manager);
+
+        // Set up the correct environment before building UI
+        initEnvironment();
 
         Button cancelButton = findViewById(R.id.BTCancel);
         cancelButton.setText(R.string.new_task);
@@ -57,10 +55,8 @@ public class TaskManagerDialog extends ContentDialog implements OnGetProcessInfo
                 if (command == null || command.trim().isEmpty()) return;
                 String cmd = command.trim();
                 if (cmd.toLowerCase().endsWith(".exe")) {
-                    // Run Windows executables via xfex (native environment)
                     runNativeCommand("xfex " + cmd);
                 } else {
-                    // Run native Linux commands
                     runNativeCommand(cmd);
                 }
                 Toast.makeText(activity, "Running: " + cmd, Toast.LENGTH_SHORT).show();
@@ -80,12 +76,51 @@ public class TaskManagerDialog extends ContentDialog implements OnGetProcessInfo
         inflater = LayoutInflater.from(activity);
     }
 
+    /**
+     * Determines the base directory, DISPLAY, and shell path based on
+     * which environment (Termux or Xodos) is accessible.
+     */
+    private void initEnvironment() {
+        String baseDir;
+        String display;
+
+        // Check which app's data directory exists
+        if (new File("/data/data/com.termux/files").exists()) {
+            baseDir = "/data/data/com.termux/files";
+        } else {
+            baseDir = "/data/data/com.xodos/files";
+        }
+
+        // DISPLAY: use system variable if set, otherwise default for each environment
+        String systemDisplay = System.getenv("DISPLAY");
+        if (systemDisplay != null && !systemDisplay.isEmpty()) {
+            display = systemDisplay;
+        } else if (baseDir.contains("com.termux")) {
+            display = ":0";
+        } else {
+            display = ":4";
+        }
+
+        // Build environment array
+        env = new String[] {
+            "PREFIX=" + baseDir + "/usr",
+            "HOME=" + baseDir + "/home",
+            "TMPDIR=" + baseDir + "/usr/tmp",
+            "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:" + baseDir + "/usr/bin",
+            "DISPLAY=" + display,
+            "XDG_RUNTIME_DIR=" + baseDir + "/usr/tmp"
+        };
+
+        // Shell path
+        shellPath = baseDir + "/usr/bin/bash";
+    }
+
     private void runNativeCommand(String command) {
         new Thread(() -> {
             try {
                 Process proc = Runtime.getRuntime().exec(
-                    new String[] { "/system/bin/sh", "-c", command },
-                    NATIVE_ENV
+                    new String[] { shellPath, "-c", command },
+                    env
                 );
                 proc.getOutputStream().close();
                 new Thread(() -> consumeStream(proc.getInputStream())).start();

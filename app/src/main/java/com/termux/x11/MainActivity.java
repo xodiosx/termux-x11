@@ -2024,7 +2024,7 @@ public static class DrawerPreferenceFragment extends PreferenceFragmentCompat
         switch (key) {
             case "full_settings":
                 Intent settingsIntent = new Intent(activity, LoriePreferences.class);
-                isLaunchingPreferences = true;
+                activity.isLaunchingPreferences = true; 
                 activity.startActivity(settingsIntent);
                 activity.drawerLayout.closeDrawer(GravityCompat.START);
                 return true;

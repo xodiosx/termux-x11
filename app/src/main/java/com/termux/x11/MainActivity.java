@@ -214,6 +214,7 @@ private DrawerLayout drawerLayout;
 
 // hud
 // service hug
+private boolean isLaunchingPreferences = false;
 private HudService hudService;
 private boolean isBound = false;
 
@@ -404,6 +405,7 @@ return findViewById(R.id.display_terminal_toolbar_view_pager);
             // Handle preference switch change
             if (isOpen) {
                 // Open preferences
+isLaunchingPreferences = true;
                 startActivity(new Intent(MainActivity.this, LoriePreferences.class));
             }
         }
@@ -1464,6 +1466,7 @@ protected void onStop() {
     @Override
     public void onResume() {
         super.onResume();
+        isLaunchingPreferences = false; 
         mNotification = buildNotification();
         mNotificationManager.notify(mNotificationId, mNotification);
 isResumed = true;
@@ -1484,10 +1487,10 @@ isResumed = true;
         
         super.onPause();
         isResumed = false;
-if (!isInPictureInPictureMode()) {
+if (!isInPictureInPictureMode() && !isLaunchingPreferences) {
     finish();
-}
-        //prepareToExit();
+}  
+    //prepareToExit();
     if (isBound && hudService != null) {
         hudService.detach();
     }
@@ -2021,6 +2024,7 @@ public static class DrawerPreferenceFragment extends PreferenceFragmentCompat
         switch (key) {
             case "full_settings":
                 Intent settingsIntent = new Intent(activity, LoriePreferences.class);
+                isLaunchingPreferences = true;
                 activity.startActivity(settingsIntent);
                 activity.drawerLayout.closeDrawer(GravityCompat.START);
                 return true;

@@ -1,4 +1,4 @@
 include ':shell-loader:stub'
 include ':shell-loader'
-include ':lorie'
+include ':app'
 include ':lorie-app'

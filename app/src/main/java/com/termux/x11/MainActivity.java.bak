@@ -472,7 +472,6 @@ public void stopDesktop() {
 private void startDebugMode() {
     // Start debug mode
     Toast.makeText(this, "Debug mode started", Toast.LENGTH_SHORT).show();
- //   
  LogcatLogger.stop();
  LogcatLogger.start(this);
 }
@@ -694,7 +693,7 @@ public boolean dispatchTouchEvent(MotionEvent ev) {
               requestWindowFeature(Window.FEATURE_NO_TITLE);
   
           super.onCreate(savedInstanceState);
-startDebugMode();
+//startDebugMode();
         SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(this);
         prefs = new Prefs(this);
      //  prefs = new Prefs(this.getApplicationContext());

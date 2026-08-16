@@ -32,8 +32,8 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.Notification;
 import androidx.core.app.NotificationCompat;
-//import me.weishu.reflection.Reflection;
-//import com.termux.x11.R;
+import me.weishu.reflection.Reflection;
+import com.termux.x11.R;
 import android.view.InputDevice;
 import android.widget.Toast;
 import android.graphics.PointF;
@@ -89,7 +89,7 @@ import android.os.Process;
 import java.util.concurrent.Executors;
 import android.graphics.Color;
 import com.termux.x11.utils.SamsungDexUtils;
-import com.termux.x11.R;
+
 
 
 

@@ -1,6 +1,7 @@
 import org.gradle.api.artifacts.ProjectDependency
 
 apply plugin: 'com.android.library'
+apply plugin: 'maven-publish'
 apply from: 'version.gradle'
 
 rootProject.subprojects.each { p -> if (p != project) project.evaluationDependsOn(p.path) }
@@ -55,6 +56,11 @@ android {
 
 dependencies {
     //noinspection DifferentStdlibGradleVersion
+    implementation 'com.github.tiann:FreeReflection:3.2.2'
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.3'
+  implementation 'com.nineoldandroids:library:2.4.0'
+implementation "com.google.guava:guava:31.1-android"
+
     implementation "com.google.android.material:material:1.11.0"
     
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8:2.4.10"
@@ -63,6 +69,16 @@ dependencies {
     compileOnly project(':shell-loader:stub')
 }
 afterEvaluate {
+publishing {
+        publications {
+            release(MavenPublication) {
+                from components.release
+                groupId = 'com.github.termux-x11'
+                artifactId = 'termux-x11'
+                version = android.defaultConfig.versionName
+            }
+        }
+    }
     tasks.register("generatePrefs") {
         //noinspection UnnecessaryQualifiedReference
         def xml = groovy.xml.DOMBuilder.parse((new StringReader(file('src/main/res/xml/preferences.xml').text)))

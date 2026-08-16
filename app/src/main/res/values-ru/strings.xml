@@ -1,4 +1,4 @@
-<!DOCTYPE resources [<!ENTITY TERMUX_PACKAGE_NAME "com.termux"><!ENTITY TERMUX_APP_NAME "XoDos"><!ENTITY TERMUX_DISPLAY_APP_NAME "Termux:X11">]>
+<!DOCTYPE resources [<!ENTITY TERMUX_PACKAGE_NAME "com.termux"><!ENTITY TERMUX_APP_NAME "Termux:X11"><!ENTITY TERMUX_DISPLAY_APP_NAME "Termux:X11">]>
 <resources>
     <string name="app_name">&TERMUX_DISPLAY_APP_NAME; </string>
     <string name="plugin_info">&TERMUX_DISPLAY_APP_NAME; это плагин для приложения &TERMUX_APP_NAME;.
@@ -140,7 +140,7 @@
     <string name="select_controller">Выбрать контроллер🎮</string>
     <string name="select_controller_summary">Для использования функции ввода включите настройки->клавиатура->сканкод</string>
     <string name="progress_manager">Менеджер прогресса📊</string>
-    <string name="install_x11_server_bridge">Установить сервера XoDos x11</string>
+    <string name="install_x11_server_bridge">Установить сервера x11</string>
     <string name="stop_desktop">Остановить рабочий стол🚫</string>
 <!--    <string name="stretch_to_fit_display">Растянуть по размеру дисплея</string>-->
 <!--    <string name="reseed_screen">Перезапуск экрана при открытии программной клавиатуры</string>-->

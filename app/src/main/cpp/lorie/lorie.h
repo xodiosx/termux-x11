@@ -15,8 +15,12 @@
 #include "linux/input-event-codes.h"
 #include "buffer.h"
 
-#define PORT 7897
+#define PORT 7892
 #define MAGIC "0xDEADBEEF"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 struct lorie_shared_server_state;
 
@@ -29,20 +33,17 @@ void lorieHandleClipboardAnnounce(void);
 void lorieHandleClipboardData(const char* data);
 void lorieSetStylusEnabled(Bool enabled);
 void lorieWakeServer(void);
+void lorieRecheckGpuCopies(void);
 void lorieChoreographerFrameCallback(__unused long t, AChoreographer* d);
 void lorieActivityConnected(void);
 void lorieSendSharedServerState(int memfd);
 void lorieRegisterBuffer(LorieBuffer* buffer);
 void lorieUnregisterBuffer(LorieBuffer* buffer);
 bool lorieConnectionAlive(void);
+extern bool lorieDebugEnabled; // Set in activity.cpp's startLogcat, only called when TERMUX_X11_DEBUG=1.
+void lorieSetRendererWakeupCond(int fd);
 
-__unused void rendererInit(JNIEnv* env);
-__unused void rendererTestCapabilities(int* legacy_drawing, uint8_t* flip);
-__unused void rendererSetWindow(ANativeWindow* newWin);
-__unused void rendererSetSharedState(struct lorie_shared_server_state* newState);
-__unused void rendererAddBuffer(LorieBuffer* buf);
-__unused void rendererRemoveBuffer(uint64_t id);
-__unused void rendererRemoveAllBuffers(void);
+__unused void rendererTestCapabilities(int* legacy_drawing);
 
 static inline __always_inline void lorie_mutex_lock(pthread_mutex_t* mutex, pid_t* lockingPid) {
     // Unfortunately there is no robust mutexes in bionic.
@@ -103,6 +104,8 @@ typedef enum {
     EVENT_CLIPBOARD_REQUEST,
     EVENT_CLIPBOARD_SEND,
     EVENT_WINDOW_FOCUS_CHANGED,
+    EVENT_RENDERER_WAKEUP_COND,
+    EVENT_GPU_COPY_DONE,
 } eventType;
 
 typedef union {
@@ -156,6 +159,20 @@ typedef union {
     } clipboardSend;
 } lorieEvent;
 
+typedef struct { int16_t x1, y1, x2, y2; } LorieGpuCopyRect;
+
+#define LORIE_GPU_COPY_MAX_RECTS 16
+#define LORIE_GPU_COPY_QUEUE_CAPACITY 8
+
+typedef struct {
+    uint64_t serial;
+    uint64_t srcBufferId;
+    uint64_t dstBufferId;
+    int16_t xOff, yOff;
+    uint16_t numRects;
+    LorieGpuCopyRect rects[LORIE_GPU_COPY_MAX_RECTS];
+} LorieGpuCopyEntry;
+
 struct lorie_shared_server_state {
     /*
      * Renderer and X server are separated into 2 different processes.
@@ -167,9 +184,16 @@ struct lorie_shared_server_state {
     pid_t lockingPid;
 
     /*
-     * Renderer thread sleeps when it is idle so we must explicitly wake it up.
+     * Single-producer (X server, present_execute_copy)/single-consumer (renderer) ring buffer
+     * of deferred GPU copies to be applied to the root window texture before it is drawn to screen.
+     * X server only ever advances writeIndex, renderer only ever advances readIndex and completedSerial.
      */
-    pthread_cond_t cond; // initialized at X server side.
+    struct {
+        volatile uint32_t writeIndex;
+        volatile uint32_t readIndex;
+        volatile uint64_t completedSerial;
+        LorieGpuCopyEntry entries[LORIE_GPU_COPY_QUEUE_CAPACITY];
+    } gpuCopyQueue;
 
     /* ID of root window texture to be drawn. */
     uint64_t rootWindowTextureID;
@@ -210,6 +234,105 @@ struct lorie_shared_server_state {
         volatile uint8_t updated, moved;
     } cursor;
 };
+
+#ifdef __cplusplus
+}
+#endif
+
+#ifdef __cplusplus
+#include <EGL/egl.h>
+#include <GLES2/gl2.h>
+#include "list.h"
+
+struct Renderer {
+    EGLDisplay egl_display = EGL_NO_DISPLAY;
+    EGLContext ctx = EGL_NO_CONTEXT;
+    EGLSurface defaultSfc = EGL_NO_SURFACE, sfc = EGL_NO_SURFACE;
+    EGLConfig cfg = 0;
+    ANativeWindow *defaultWin = nullptr, *win = nullptr;
+    struct xorg_list addedBuffers, buffers, removedBuffers;
+    volatile jint filtering = GL_NEAREST;
+
+    volatile bool stateChanged = false, windowChanged = false, viewportChanged = false;
+    struct lorie_shared_server_state* pendingState = nullptr;
+    ANativeWindow* pendingWin = nullptr;
+    volatile int viewportX = 0, viewportY = 0, viewportW = 0, viewportH = 0, expectedW = 0, expectedH = 0;
+    volatile int hiddenBottom = 0;
+    volatile int zoomPercent = 100;
+    float panSourceLeft = 0.f, panSourceTop = 0.f;
+    float hiddenPanSourceTop = -1.f; // the vertical pan of the other keyboard state, negative until there was one
+    bool bottomWasHidden = false;
+    JNIEnv* rendererEnv = nullptr;
+    JavaVM* jvm = nullptr; // Stashed by init() so initThread() can be reached via `this` from a plain (non-capturing) pthread_create callback.
+    jclass lorieViewClass = nullptr;
+    jmethodID setRendererViewportMethod = nullptr;
+    int reportedViewportX = -1, reportedViewportY = -1, reportedViewportW = -1, reportedViewportH = -1;
+    float reportedSourceLeft = -1.f, reportedSourceTop = -1.f, reportedSourceWidth = -1.f, reportedSourceHeight = -1.f;
+
+    pthread_mutex_t stateLock;
+    // Shared with the X server so it can signal us directly. Only this thread ever waits on it, so stateLock
+    // (the companion mutex) doesn't need to be shared too.
+    pthread_cond_t* stateCond = nullptr;
+    pthread_cond_t stateChangeFinishCond;
+    pthread_spinlock_t bufferLock;
+    int stateCondFd = -1;
+    struct lorie_shared_server_state* state = nullptr;
+    struct {
+        GLuint id;
+        bool cursorChanged;
+    } cursor{};
+
+    // FBO used to blit deferred Present "copy" entries (see lorieTryScheduleGpuCopy) into the root texture.
+    GLuint gpuCopyFbo = 0;
+
+    GLuint g_texture_program = 0, gv_pos = 0, gv_coords = 0;
+    GLuint g_texture_program_bgra = 0, gv_pos_bgra = 0, gv_coords_bgra = 0;
+
+    EGLint configAttribs[13] = {
+        EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
+        EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
+        EGL_RED_SIZE, 8,
+        EGL_GREEN_SIZE, 8,
+        EGL_BLUE_SIZE, 8,
+        EGL_ALPHA_SIZE, 0,
+        EGL_NONE
+    };
+
+    // Formerly function-local statics; moved here for the same reason as everything else above -
+    // they are per-instance state, not per-process.
+    uint64_t dstSizeLogCount = 0, srcSizeLogCount = 0;
+    uint64_t lastRequestedBufferId = 0;
+
+    void init(JNIEnv* env);
+    void* initThread();
+    int getWakeupCondFd();
+    void setFiltering(jint f);
+    void testCapabilities(int* legacy_drawing);
+    void setSharedState(struct lorie_shared_server_state* newState);
+    void addBuffer(LorieBuffer* buf);
+    void removeBuffer(uint64_t id);
+    void removeAllBuffers();
+    void setWindow(JNIEnv* env, jobject jsfc);
+    void setViewport(int x, int y, int w, int h, int ew, int eh, int hidden);
+    void setZoom(int percent);
+    void releaseWinAndSurface(ANativeWindow** anw, EGLSurface* esfc);
+    void refreshContext();
+    LorieBuffer* findBufferWithRetry(uint64_t id);
+    uint64_t applyPendingGpuCopiesLocked();
+    void applyPendingGpuCopies();
+    void redrawLocked(bool* waitingForBuffers);
+    bool shouldWait(bool* waitingForBuffers);
+    void threadLoop();
+    void bindTexture(GLuint id);
+    void reportViewport(int dstX, int dstY, int dstW, int dstH, float left, float top, float width, float height);
+    void drawRegion(GLuint id, float x0, float y0, float x1, float y1, float u0, float v0, float u1, float v1, uint8_t flip);
+    void drawCursor(float displayWidth, float displayHeight, float sourceLeft, float sourceTop);
+};
+#endif
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 static int android_to_linux_keycode[304] = {
         [ 4   /* ANDROID_KEYCODE_BACK */] = KEY_ESC,
@@ -355,3 +478,7 @@ static int android_to_linux_keycode[304] = {
         [ 208  /* ANDROID_KEYCODE_CALENDAR */] = KEY_CALENDAR,
         [ 210  /* ANDROID_KEYCODE_CALCULATOR */] = KEY_CALC,
 };
+
+#ifdef __cplusplus
+}
+#endif

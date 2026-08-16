@@ -1,11 +1,18 @@
 package com.termux.x11;
-////////
+
+//////// new
 import android.view.MotionEvent;
 import android.view.InputDevice;
-//import android.widget.Toast;
 import static android.view.InputDevice.KEYBOARD_TYPE_ALPHABETIC;
 import static android.view.KeyEvent.KEYCODE_BACK;
 import static java.nio.charset.StandardCharsets.UTF_8;
+import android.view.InputDevice;
+import com.termux.x11.controller.core.CursorLocker;
+import com.termux.x11.controller.winhandler.WinHandler;
+import com.termux.x11.controller.xserver.InputDeviceManager;
+import com.termux.x11.controller.xserver.Keyboard;
+import com.termux.x11.controller.xserver.Pointer;
+import com.termux.x11.controller.xserver.XKeycode;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
@@ -15,10 +22,12 @@ import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.ContextWrapper;
 import android.graphics.Color;
+import android.graphics.Matrix;
 import android.graphics.Point;
 import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.drawable.ColorDrawable;
+import android.opengl.GLES20;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.CancellationSignal;
@@ -27,10 +36,12 @@ import android.os.Looper;
 import android.os.Message;
 import android.text.Editable;
 import android.text.InputType;
+import android.text.Selection;
 import android.util.AttributeSet;
 import android.util.Log;
-import android.view.InputDevice;
+import android.util.Rational;
 import android.view.KeyEvent;
+import android.view.Display;
 import android.view.Surface;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
@@ -53,15 +64,11 @@ import android.view.inputmethod.TextSnapshot;
 
 import androidx.annotation.Keep;
 import androidx.annotation.NonNull;
+import androidx.core.math.MathUtils;
 
-import com.termux.x11.controller.core.CursorLocker;
-import com.termux.x11.controller.winhandler.WinHandler;
-import com.termux.x11.controller.xserver.InputDeviceManager;
-import com.termux.x11.controller.xserver.Keyboard;
-import com.termux.x11.controller.xserver.Pointer;
-import com.termux.x11.controller.xserver.XKeycode;
 import com.termux.x11.input.InputStub;
 import com.termux.x11.input.TouchInputHandler;
+import com.termux.x11.utils.SamsungDexUtils;
 
 import java.util.Set;
 import java.util.concurrent.Executor;
@@ -69,277 +76,17 @@ import java.util.function.Consumer;
 import java.util.function.IntConsumer;
 import java.util.regex.PatternSyntaxException;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
+
 import dalvik.annotation.optimization.CriticalNative;
 import dalvik.annotation.optimization.FastNative;
-class InputConnectionWrapper implements InputConnection {
-    private static final String TAG = "InputConnectionWrapper";
-    private final InputConnection wrapped;
 
-    public InputConnectionWrapper(InputConnection wrapped) {
-        this.wrapped = wrapped;
-    }
-
-    @Override
-    public CharSequence getTextBeforeCursor(int n, int flags) {
-        Log.d(TAG, "getTextBeforeCursor(" + n + ", " + flags + ")");
-        return wrapped.getTextBeforeCursor(n, flags);
-    }
-
-    @Override
-    public CharSequence getTextAfterCursor(int n, int flags) {
-        Log.d(TAG, "getTextAfterCursor(" + n + ", " + flags + ")");
-        return wrapped.getTextAfterCursor(n, flags);
-    }
-
-    @Override
-    public CharSequence getSelectedText(int flags) {
-        Log.d(TAG, "getSelectedText(" + flags + ")");
-        return wrapped.getSelectedText(flags);
-    }
-
-    @Override
-    public SurroundingText getSurroundingText(int beforeLength, int afterLength, int flags) {
-        Log.d(TAG, "getSurroundingText(" + beforeLength + ", " + afterLength + ", " + flags + ")");
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            return wrapped.getSurroundingText(beforeLength, afterLength, flags);
-        } else return null;
-    }
-
-    @Override
-    public int getCursorCapsMode(int reqModes) {
-        Log.d(TAG, "getCursorCapsMode(" + reqModes + ")");
-        return wrapped.getCursorCapsMode(reqModes);
-    }
-
-    @Override
-    public ExtractedText getExtractedText(ExtractedTextRequest request, int flags) {
-        Log.d(TAG, "getExtractedText(" + request + ", " + flags + ")");
-        return wrapped.getExtractedText(request, flags);
-    }
-
-    @Override
-    public boolean deleteSurroundingText(int beforeLength, int afterLength) {
-        Log.d(TAG, "deleteSurroundingText(" + beforeLength + ", " + afterLength + ")");
-        return wrapped.deleteSurroundingText(beforeLength, afterLength);
-    }
-
-    @Override
-    public boolean deleteSurroundingTextInCodePoints(int beforeLength, int afterLength) {
-        Log.d(TAG, "deleteSurroundingTextInCodePoints(" + beforeLength + ", " + afterLength + ")");
-        return wrapped.deleteSurroundingTextInCodePoints(beforeLength, afterLength);
-    }
-
-    @Override
-    public boolean setComposingText(CharSequence text, int newCursorPosition) {
-        Log.d(TAG, "setComposingText(" + text + ", " + newCursorPosition + ")");
-        return wrapped.setComposingText(text, newCursorPosition);
-    }
-
-    @Override
-    public boolean setComposingText(@NonNull CharSequence text, int newCursorPosition, TextAttribute textAttribute) {
-        Log.d(TAG, "setComposingText(" + text + ", " + newCursorPosition + ", " + textAttribute + ")");
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            return wrapped.setComposingText(text, newCursorPosition, textAttribute);
-        } else return false;
-    }
-
-    @Override
-    public boolean setComposingRegion(int start, int end) {
-        Log.d(TAG, "setComposingRegion(" + start + ", " + end + ")");
-        return wrapped.setComposingRegion(start, end);
-    }
-
-    @Override
-    public boolean setComposingRegion(int start, int end, TextAttribute textAttribute) {
-        Log.d(TAG, "setComposingRegion(" + start + ", " + end + ", " + textAttribute + ")");
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            return wrapped.setComposingRegion(start, end, textAttribute);
-        } else return false;
-    }
-
-    @Override
-    public boolean finishComposingText() {
-        Log.d(TAG, "finishComposingText()");
-        return wrapped.finishComposingText();
-    }
-
-    @Override
-    public boolean commitText(CharSequence text, int newCursorPosition) {
-        Log.d(TAG, "commitText(" + text + ", " + newCursorPosition + ")");
-        return wrapped.commitText(text, newCursorPosition);
-    }
-
-    @Override
-    public boolean commitText(@NonNull CharSequence text, int newCursorPosition, TextAttribute textAttribute) {
-        Log.d(TAG, "commitText(" + text + ", " + newCursorPosition + ", " + textAttribute + ")");
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            return wrapped.commitText(text, newCursorPosition, textAttribute);
-        } else return false;
-    }
-
-    @Override
-    public boolean commitCompletion(CompletionInfo text) {
-        Log.d(TAG, "commitCompletion(" + text + ")");
-        return wrapped.commitCompletion(text);
-    }
-
-    @Override
-    public boolean commitCorrection(CorrectionInfo correctionInfo) {
-        Log.d(TAG, "commitCorrection(" + correctionInfo + ")");
-        return wrapped.commitCorrection(correctionInfo);
-    }
-
-    @Override
-    public boolean setSelection(int start, int end) {
-        Log.d(TAG, "setSelection(" + start + ", " + end + ")");
-        return wrapped.setSelection(start, end);
-    }
-
-    @Override
-    public boolean performEditorAction(int editorAction) {
-        Log.d(TAG, "performEditorAction(" + editorAction + ")");
-        return wrapped.performEditorAction(editorAction);
-    }
-
-    @Override
-    public boolean performContextMenuAction(int id) {
-        Log.d(TAG, "performContextMenuAction(" + id + ")");
-        return wrapped.performContextMenuAction(id);
-    }
-
-    @Override
-    public boolean beginBatchEdit() {
-        Log.d(TAG, "beginBatchEdit()");
-        return wrapped.beginBatchEdit();
-    }
-
-    @Override
-    public boolean endBatchEdit() {
-        Log.d(TAG, "endBatchEdit()");
-        return wrapped.endBatchEdit();
-    }
-
-    @Override
-    public boolean sendKeyEvent(KeyEvent event) {
-        Log.d(TAG, "sendKeyEvent(" + event + ")");
-        return wrapped.sendKeyEvent(event);
-    }
-
-    @Override
-    public boolean clearMetaKeyStates(int states) {
-        Log.d(TAG, "clearMetaKeyStates(" + states + ")");
-        return wrapped.clearMetaKeyStates(states);
-    }
-
-    @Override
-    public boolean reportFullscreenMode(boolean enabled) {
-        Log.d(TAG, "reportFullscreenMode(" + enabled + ")");
-        return wrapped.reportFullscreenMode(enabled);
-    }
-
-    @Override
-    public boolean performSpellCheck() {
-        Log.d(TAG, "performSpellCheck()");
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            return wrapped.performSpellCheck();
-        } else return false;
-    }
-
-    @Override
-    public boolean performPrivateCommand(String action, Bundle data) {
-        Log.d(TAG, "performPrivateCommand(" + action + ", " + data + ")");
-        return wrapped.performPrivateCommand(action, data);
-    }
-
-    @Override
-    public void performHandwritingGesture(@NonNull HandwritingGesture gesture, Executor executor, IntConsumer consumer) {
-        Log.d(TAG, "performHandwritingGesture(" + gesture + ", " + executor + ", " + consumer + ")");
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            wrapped.performHandwritingGesture(gesture, executor, consumer);
-        }
-    }
-
-    @Override
-    public boolean previewHandwritingGesture(@NonNull PreviewableHandwritingGesture gesture, CancellationSignal cancellationSignal) {
-        Log.d(TAG, "previewHandwritingGesture(" + gesture + ", " + cancellationSignal + ")");
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            return wrapped.previewHandwritingGesture(gesture, cancellationSignal);
-        } else return false;
-    }
-
-    @Override
-    public boolean requestCursorUpdates(int cursorUpdateMode) {
-        Log.d(TAG, "requestCursorUpdates(" + cursorUpdateMode + ")");
-        return wrapped.requestCursorUpdates(cursorUpdateMode);
-    }
-
-    @Override
-    public boolean requestCursorUpdates(int cursorUpdateMode, int cursorUpdateFilter) {
-        Log.d(TAG, "requestCursorUpdates(" + cursorUpdateMode + ", " + cursorUpdateFilter + ")");
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            return wrapped.requestCursorUpdates(cursorUpdateMode, cursorUpdateFilter);
-        } else return false;
-    }
-
-    @Override
-    public void requestTextBoundsInfo(@NonNull RectF bounds, @NonNull Executor executor, @NonNull Consumer<TextBoundsInfoResult> consumer) {
-        Log.d(TAG, "requestTextBoundsInfo(" + bounds + ", " + executor + ", " + consumer + ")");
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            wrapped.requestTextBoundsInfo(bounds, executor, consumer);
-        }
-    }
-
-    @Override
-    public Handler getHandler() {
-        Log.d(TAG, "getHandler()");
-        return wrapped.getHandler();
-    }
-
-    @Override
-    public void closeConnection() {
-        Log.d(TAG, "closeConnection()");
-        wrapped.closeConnection();
-    }
-
-    @Override
-    public boolean commitContent(@NonNull InputContentInfo inputContentInfo, int flags, Bundle opts) {
-        Log.d(TAG, "commitContent(" + inputContentInfo + ", " + flags + ", " + opts + ")");
-        return wrapped.commitContent(inputContentInfo, flags, opts);
-    }
-
-    @Override
-    public boolean setImeConsumesInput(boolean imeConsumesInput) {
-        Log.d(TAG, "setImeConsumesInput(" + imeConsumesInput + ")");
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            return wrapped.setImeConsumesInput(imeConsumesInput);
-        } else return false;
-    }
-
-    @Override
-    public TextSnapshot takeSnapshot() {
-        Log.d(TAG, "takeSnapshot()");
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            return wrapped.takeSnapshot();
-        } else return null;
-    }
-
-    @Override
-    public boolean replaceText(int start,
-                               int end,
-                               @NonNull CharSequence text,
-                               int newCursorPosition,
-                               TextAttribute textAttribute) {
-        Log.d(TAG, "replaceText(" + start + ", " + end + ", " + text + ", " + newCursorPosition + ", " + textAttribute + ")");
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            return wrapped.replaceText(start, end, text, newCursorPosition, textAttribute);
-        } else return false;
-    }
-}
-
-@Keep
-@SuppressLint("WrongConstant")
+@Keep @SuppressLint("WrongConstant")
 @SuppressWarnings("deprecation")
 public class LorieView extends SurfaceView implements InputStub {
+    private static int rendererZoom = 100;
+    private static final Rect NO_INSETS = new Rect();
+    private int obscuredBottom = 0;   
     public final Keyboard keyboard = Keyboard.createKeyboard(this);
     public final Pointer pointer = new Pointer(this);
     final public InputDeviceManager inputDeviceManager = new InputDeviceManager(this);
@@ -347,6 +94,7 @@ public class LorieView extends SurfaceView implements InputStub {
     public CursorLocker cursorLocker;
     public WinHandler winHandler;
 
+// new
     public void setWinHandler(WinHandler handler) {
         this.winHandler = handler;
     }
@@ -355,10 +103,6 @@ public class LorieView extends SurfaceView implements InputStub {
         return winHandler;
     }
 
-
-
-
-// In LorieView.java
 
 @Override
 public boolean onGenericMotionEvent(MotionEvent event) {
@@ -391,16 +135,8 @@ public boolean onGenericMotionEvent(MotionEvent event) {
 }
 
 
-
-
-
-
-    public boolean isFullscreen() {
-        return true;
-    }
-
     public interface Callback {
-        void changed(int surfaceWidth, int surfaceHeight, int screenWidth, int screenHeight);
+        void inputTransformChanged(int screenWidth, int screenHeight, Matrix inputTransform);
     }
 
     interface PixelFormat {
@@ -413,9 +149,16 @@ public boolean onGenericMotionEvent(MotionEvent event) {
     private static boolean hardwareKbdScancodesWorkaround = false;
     private final InputMethodManager mIMM = (InputMethodManager)getContext().getSystemService(Context.INPUT_METHOD_SERVICE);
     private Callback mCallback;
-    private final Point p = new Point();
+    public final Point p = new Point();
+    private final Rect contentInsets = new Rect();
+    private final Rect viewport = new Rect();
+    private final Rect inputViewport = new Rect();
+    private final Matrix inputTransform = new Matrix();
+    private float inputSourceLeft = 0.f, inputSourceTop = 0.f;
+    private float inputSourceWidth = 0.f, inputSourceHeight = 0.f;
+    private boolean dimensionsFrozen = false;
     boolean commitedText = false;
-    private final InputConnection mConnection = new InputConnectionWrapper(new BaseInputConnection(this, false) {
+    private final InputConnection mConnection = new BaseInputConnection(this, false) {
         private final MainActivity a = MainActivity.getInstance();
         private CharSequence currentComposingText = null;
 
@@ -471,7 +214,6 @@ public boolean onGenericMotionEvent(MotionEvent event) {
                 currentPos = 1;
             }
             mIMM.updateSelection(LorieView.this, currentPos, currentPos, -1, -1);
-            Log.d("InputConnectionWrapper", "SENDING CURSOR POS " + currentPos);
         }
 
         // Needed to send arrow keys with IME's cursor control feature
@@ -534,7 +276,7 @@ public boolean onGenericMotionEvent(MotionEvent event) {
             int oldLen = currentComposingText != null ? currentComposingText.length() : 0;
             int newLen = newText != null ? newText.length() : 0;
             if (oldLen > 0 && newLen > 0 && (currentComposingText.toString().startsWith(newText.toString())
-                || newText.toString().startsWith(currentComposingText.toString()))) {
+                    || newText.toString().startsWith(currentComposingText.toString()))) {
                 for (int i=0; i < oldLen - newLen; i++)
                     sendKey(KeyEvent.KEYCODE_DEL);
                 for (int i=oldLen; i<newLen; i++)
@@ -582,8 +324,6 @@ public boolean onGenericMotionEvent(MotionEvent event) {
 
         @Override
         public boolean commitText(CharSequence text, int newPos) {
-            Log.d("InputConnectionWrapper", newPos + " - 1 + " + currentPos + " + " + text.length());
-            Log.d("InputConnectionWrapper", "OLD " + currentPos + " NEW " + Math.max(1, newPos - 1 + currentPos + text.length()) + " mBatchEditNesting " + mBatchEditNesting);
             if (newPos > 0)
                 currentPos = Math.max(1, newPos - 1 + currentPos + text.length());
             else
@@ -610,9 +350,9 @@ public boolean onGenericMotionEvent(MotionEvent event) {
         @Override
         public boolean requestCursorUpdates(int cursorUpdateMode) {
             mIMM.updateCursorAnchorInfo(LorieView.this, new CursorAnchorInfo.Builder()
-                .setComposingText(-1, null)
-                .setSelectionRange(currentPos, currentPos)
-                .build());
+                    .setComposingText(-1, null)
+                    .setSelectionRange(currentPos, currentPos)
+                    .build());
             return true;
         }
 
@@ -620,7 +360,7 @@ public boolean onGenericMotionEvent(MotionEvent event) {
         public boolean requestCursorUpdates(int cursorUpdateMode, int cursorUpdateFilter) {
             return requestCursorUpdates(cursorUpdateMode);
         }
-    });
+    };
     private final SurfaceHolder.Callback mSurfaceCallback = new SurfaceHolder.Callback() {
         @Override public void surfaceCreated(@NonNull SurfaceHolder holder) {
             holder.setFormat(PixelFormat.BGRA_8888);
@@ -632,48 +372,37 @@ public boolean onGenericMotionEvent(MotionEvent event) {
             height = getMeasuredHeight();
 
             Log.d("SurfaceChangedListener", "Surface was changed: " + width + "x" + height);
-            if (mCallback == null)
-                return;
-
-            getDimensionsFromSettings();
-            if (mCallback != null)
-                mCallback.changed(width, height, p.x, p.y);
+            updateViewport();
         }
 
         @Override public void surfaceDestroyed(@NonNull SurfaceHolder holder) {
             LorieView.this.surfaceChanged(null);
-            if (mCallback != null)
-                mCallback.changed(0, 0, 0, 0);
         }
     };
 
-    public LorieView(Context context) {
-        super(context);
-        init();
-    }
-
-    public LorieView(Context context, AttributeSet attrs) {
-        super(context, attrs);
-        init();
-    }
-
-    public LorieView(Context context, AttributeSet attrs, int defStyleAttr) {
-        super(context, attrs, defStyleAttr);
-        init();
-    }
-
+    public LorieView(Context context) { super(context); init(); }
+    public LorieView(Context context, AttributeSet attrs) { super(context, attrs); init(); }
+    public LorieView(Context context, AttributeSet attrs, int defStyleAttr) { super(context, attrs, defStyleAttr); init(); }
     @SuppressWarnings("unused")
-    public LorieView(Context context, AttributeSet attrs, int defStyleAttr, int defStyleRes) {
-        super(context, attrs, defStyleAttr, defStyleRes);
-        init();
-    }
+    public LorieView(Context context, AttributeSet attrs, int defStyleAttr, int defStyleRes) { super(context, attrs, defStyleAttr, defStyleRes); init(); }
 
     private void init() {
         getHolder().addCallback(mSurfaceCallback);
         clipboard = (ClipboardManager) getContext().getSystemService(Context.CLIPBOARD_SERVICE);
         nativeInit();
-        screenInfo = new ScreenInfo(this);
+       screenInfo = new ScreenInfo(this);
         cursorLocker = new CursorLocker(this);
+        setFocusable(true);
+        setFocusableInTouchMode(true);
+
+        setBackground(new ColorDrawable(Color.TRANSPARENT) {
+            public boolean isStateful() {
+                return true;
+            }
+            public boolean hasFocusStateSpecified() {
+                return true;
+            }
+        });
     }
 
     public void setCallback(Callback callback) {
@@ -681,50 +410,13 @@ public boolean onGenericMotionEvent(MotionEvent event) {
         triggerCallback();
     }
 
-    public void regenerate() {
-        Callback callback = mCallback;
-        mCallback = null;
-        getHolder().setFormat(android.graphics.PixelFormat.RGBA_8888);
-        mCallback = callback;
-
-        triggerCallback();
-    }
-
     public void triggerCallback() {
-        setFocusable(true);
-        setFocusableInTouchMode(true);
         requestFocus();
-
-        setBackground(new ColorDrawable(Color.TRANSPARENT) {
-            public boolean isStateful() {
-                return true;
-            }
-
-            public boolean hasFocusStateSpecified() {
-                return true;
-            }
-        });
-
-        Rect r = getHolder().getSurfaceFrame();
-        getActivity().runOnUiThread(() -> mSurfaceCallback.surfaceChanged(getHolder(), PixelFormat.BGRA_8888, r.width(), r.height()));
+        updateViewport();
     }
 
-    private Activity getActivity() {
-        Context context = getContext();
-        while (context instanceof ContextWrapper) {
-            if (context instanceof Activity) {
-                return (Activity) context;
-            }
-            context = ((ContextWrapper) context).getBaseContext();
-        }
-
-        throw new NullPointerException();
-    }
-
-    void getDimensionsFromSettings() {
+    void getDimensionsFromSettings(int width, int height) {
         Prefs prefs = MainActivity.getPrefs();
-        int width = getMeasuredWidth();
-        int height = getMeasuredHeight();
         int w = width;
         int h = height;
         switch(prefs.displayResolutionMode.get()) {
@@ -745,6 +437,8 @@ public boolean onGenericMotionEvent(MotionEvent event) {
                     String[] resolution = prefs.displayResolutionCustom.get().split("x");
                     w = Integer.parseInt(resolution[0]);
                     h = Integer.parseInt(resolution[1]);
+                    if (w <= 0 || h <= 0)
+                        throw new NumberFormatException();
                 } catch (NumberFormatException | PatternSyntaxException ignored) {
                     w = 1280;
                     h = 1024;
@@ -753,49 +447,149 @@ public boolean onGenericMotionEvent(MotionEvent event) {
             }
         }
 
-        if (prefs.adjustResolution.get() && ((width < height && w > h) || (width > height && w < h))) {
-            p.set(h, w);
-            screenInfo.screenWidth = (short) h;
-            screenInfo.screenHeight = (short) w;
+        if (prefs.adjustResolution.get() && ((width < height && w > h) || (width > height && w < h)))
+            setCvtDimensions(h, w);
+        else
+            setCvtDimensions(w, h);
+    }
+
+    // The X screen ends up slightly smaller than requested, libxcvt rounds the mode width down.
+    private void setCvtDimensions(int width, int height) {
+        int granularity = 8; // horizontal granularity of a cvt mode
+        int rounded = Math.max(granularity, width - width % granularity);
+        // 1366 is not a multiple of it, and libxcvt makes an exception for exactly this size.
+        p.set(rounded == 1360 && height == 768 ? 1366 : rounded, height);
+    }
+
+    private Matrix getInputTransform() {
+        inputTransform.reset();
+        inputTransform.postTranslate(-inputViewport.left, -inputViewport.top);
+        inputTransform.postScale(inputSourceWidth / (float) inputViewport.width(), inputSourceHeight / (float) inputViewport.height());
+        inputTransform.postTranslate(inputSourceLeft, inputSourceTop);
+        return new Matrix(inputTransform);
+    }
+
+    private void updateInputTransform() {
+        if (mCallback != null)
+            mCallback.inputTransformChanged(p.x, p.y, getInputTransform());
+    }
+
+    private void sendWindowChange() {
+        String name;
+        int framerate = (int) (getDisplay() != null ? getDisplay().getRefreshRate() : 30);
+
+        if (getDisplay() == null || getDisplay().getDisplayId() == Display.DEFAULT_DISPLAY)
+            name = "builtin";
+        else if (SamsungDexUtils.checkDeXEnabled(MainActivity.getInstance()))
+            name = "dex";
+        else
+            name = "external";
+
+        sendWindowChange(p.x, p.y, framerate, name);
+    }
+
+    @Keep
+    @SuppressWarnings("unused")
+    private static void setRendererViewport(int viewportLeft, int viewportTop, int viewportWidth, int viewportHeight,
+                                            float sourceLeft, float sourceTop, float sourceWidth, float sourceHeight) {
+        MainActivity.handler.post(() -> {
+            MainActivity activity = MainActivity.getInstance();
+            if (activity == null)
+                return;
+
+            LorieView view = activity.getLorieView();
+            view.inputViewport.set(viewportLeft, viewportTop, viewportLeft + viewportWidth, viewportTop + viewportHeight);
+            view.inputSourceLeft = sourceLeft;
+            view.inputSourceTop = sourceTop;
+            view.inputSourceWidth = sourceWidth;
+            view.inputSourceHeight = sourceHeight;
+            view.updateInputTransform();
+        });
+    }
+
+    /** Keeps the X screen size while the window is floating, the picture is scaled instead. */
+    public void freezeDimensions(boolean freeze) {
+        if (dimensionsFrozen == freeze || (freeze && (p.x == 0 || p.y == 0)))
+            return;
+
+        dimensionsFrozen = freeze;
+        if (!freeze)
+            requestLayout(); // measuring is what reapplies the dimensions, and the window may still be resizing
+    }
+
+    /** Aspect ratio of the X screen, null if its size is not known yet. */
+    public Rational getScreenAspectRatio() {
+        return p.x == 0 || p.y == 0 ? null : new Rational(p.x, p.y);
+    }
+    
+        /** Height of the picture the soft keyboard covers instead of the picture being shrunk for it. */
+    public void setObscuredBottom(int height) {
+        if (obscuredBottom == height)
+            return;
+
+        obscuredBottom = height;
+        updateViewport();
+    }
+
+    public void setContentInsets(int left, int top, int right, int bottom) {
+        if (contentInsets.left == left && contentInsets.top == top && contentInsets.right == right && contentInsets.bottom == bottom)
+            return;
+
+        contentInsets.set(left, top, right, bottom);
+        updateViewport();
+    }
+
+    private void updateViewport() {
+        Prefs prefs = MainActivity.getPrefs();
+
+        int surfaceW = getMeasuredWidth(), surfaceH = getMeasuredHeight();
+        // Views the insets reserve room for are hidden while the dimensions are frozen.
+        Rect insets = dimensionsFrozen ? NO_INSETS : contentInsets;
+        int availableLeft = insets.left, availableTop = insets.top;
+        int availableW = Math.max(0, surfaceW - insets.left - insets.right);
+        int availableH = Math.max(0, surfaceH - insets.top - insets.bottom);
+
+        if (availableW == 0 || availableH == 0)
+            return;
+
+        if (!dimensionsFrozen)
+            getDimensionsFromSettings(availableW, availableH);
+
+        int drawW = availableW;
+        int drawH = availableH;
+
+        // A floating window is given the aspect ratio of the picture, stretching it there is pointless.
+        if (dimensionsFrozen || !prefs.displayStretch.get()) {
+            if (drawW > drawH * p.x / p.y)
+                drawW = drawH * p.x / p.y;
+            else
+                drawH = drawW * p.y / p.x;
         }
-        else {
-            p.set(w, h);
-            screenInfo.screenWidth = (short) w;
-            screenInfo.screenHeight = (short) h;
+        // The picture keeps its size when the soft keyboard covers the bottom, it is just centered
+        // in what is left visible, and only what still does not fit there is left to be scrolled.
+        int visibleH = Math.max(0, availableH - obscuredBottom);
+        int left = availableLeft + (availableW - drawW) / 2;
+        int top = availableTop + Math.max(0, (visibleH - drawH) / 2);
+
+        viewport.set(left, top, left + drawW, top + drawH);
+        int hiddenBottom = Math.max(0, viewport.bottom - (availableTop + visibleH));
+        if ((rendererZoom == 100 && hiddenBottom == 0) || inputSourceWidth == 0.f || inputSourceHeight == 0.f) {
+            inputViewport.set(viewport);
+            inputSourceLeft = inputSourceTop = 0.f;
+            inputSourceWidth = p.x;
+            inputSourceHeight = p.y;
         }
+        setViewport(viewport.left, viewport.top, viewport.width(), viewport.height(), p.x, p.y, hiddenBottom);
+
+        updateInputTransform();
+        if (!dimensionsFrozen)
+            sendWindowChange();
     }
 
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
         super.onMeasure(widthMeasureSpec, heightMeasureSpec);
-
-        Prefs prefs = MainActivity.getPrefs();
-        if (prefs.displayStretch.get()
-            || "native".equals(prefs.displayResolutionMode.get())
-            || "scaled".equals(prefs.displayResolutionMode.get())) {
-            getHolder().setSizeFromLayout();
-            return;
-        }
-
-        getDimensionsFromSettings();
-
-        if (p.x <= 0 || p.y <= 0)
-            return;
-
-        int width = getMeasuredWidth();
-        int height = getMeasuredHeight();
-
-        if (prefs.adjustResolution.get() && ((width < height && p.x > p.y) || (width > height && p.x < p.y)))
-            //noinspection SuspiciousNameCombination
-            p.set(p.y, p.x);
-
-        if (width > height * p.x / p.y)
-            width = height * p.x / p.y;
-        else
-            height = width * p.y / p.x;
-
-        getHolder().setFixedSize(p.x, p.y);
-        setMeasuredDimension(width, height);
+        updateViewport();
     }
 
     @Override
@@ -804,11 +598,11 @@ public boolean onGenericMotionEvent(MotionEvent event) {
     }
 
     static final Set<Integer> imeBuggyKeys = Set.of(
-        KeyEvent.KEYCODE_DEL,
-        KeyEvent.KEYCODE_CTRL_LEFT,
-        KeyEvent.KEYCODE_CTRL_RIGHT,
-        KeyEvent.KEYCODE_SHIFT_LEFT,
-        KeyEvent.KEYCODE_SHIFT_RIGHT
+            KeyEvent.KEYCODE_DEL,
+            KeyEvent.KEYCODE_CTRL_LEFT,
+            KeyEvent.KEYCODE_CTRL_RIGHT,
+            KeyEvent.KEYCODE_SHIFT_LEFT,
+            KeyEvent.KEYCODE_SHIFT_RIGHT
     );
 
     Handler keyReleaseHandler = new Handler(Looper.getMainLooper()) {
@@ -843,27 +637,63 @@ public boolean onGenericMotionEvent(MotionEvent event) {
             if (action == KeyEvent.ACTION_UP)
                 keyReleaseHandler.removeMessages(event.getKeyCode());
         }
-        int k = event.getKeyCode();
-        if (k == KEYCODE_BACK) {
-            if (event.isFromSource(InputDevice.SOURCE_MOUSE) || event.isFromSource(InputDevice.SOURCE_MOUSE_RELATIVE)) {
-                if (event.getRepeatCount() != 0) // ignore auto-repeat
-                    return true;
-                if (event.getAction() == KeyEvent.ACTION_UP || event.getAction() == KeyEvent.ACTION_DOWN)
-                    sendMouseEvent(-1, -1, InputStub.BUTTON_RIGHT, event.getAction() == KeyEvent.ACTION_DOWN, true);
-                return true;
-            }
-        }
+
         return super.dispatchKeyEvent(event);
     }
 
     ClipboardManager.OnPrimaryClipChangedListener clipboardListener = this::handleClipboardChange;
 
     public void reloadPreferences(Prefs p) {
+        String filtering = p.displayFilteringMode.get();
+        setFiltering("nearest".equals(filtering) ? GLES20.GL_NEAREST : GLES20.GL_LINEAR);
         hardwareKbdScancodesWorkaround = p.hardwareKbdScancodesWorkaround.get();
         clipboardSyncEnabled = p.clipboardEnable.get();
         setClipboardSyncEnabled(clipboardSyncEnabled, clipboardSyncEnabled);
         TouchInputHandler.refreshInputDevices();
     }
+
+///  touch controls 
+public void injectPointerMove(int x, int y) {
+    pointer.moveTo(x, y);
+}
+
+public void injectPointerMoveDelta(int dx, int dy) {
+    pointer.moveDelta(dx, dy);
+}
+
+public void injectPointerButtonPress(Pointer.Button buttonCode) {
+    pointer.setButton(buttonCode, true);
+}
+
+public void injectPointerButtonRelease(Pointer.Button buttonCode) {
+    pointer.setButton(buttonCode, false);
+}
+
+public void injectKeyPress(XKeycode xKeycode) {
+    injectKeyPress(xKeycode, 0);
+}
+
+public void injectKeyPress(XKeycode xKeycode, int keysym) {
+    keyboard.setKeyPress(xKeycode.id, keysym);
+}
+
+public void injectKeyRelease(XKeycode xKeycode) {
+    keyboard.setKeyRelease(xKeycode.id);
+}
+
+public void injectText(String text) {
+    if (text.isEmpty()) return;
+    sendTextEvent(text.getBytes());
+}
+
+public boolean isFullscreen() {
+    return MainActivity.getPrefs().fullscreen.get();
+}
+
+public void regenerate() {
+    updateViewport();
+}
+
 
     // It is used in native code
     void setClipboardText(String text) {
@@ -897,30 +727,30 @@ public boolean onGenericMotionEvent(MotionEvent event) {
     public void checkForClipboardChange() {
         ClipDescription desc = clipboard.getPrimaryClipDescription();
         if (clipboardSyncEnabled && desc != null &&
-            lastClipboardTimestamp < desc.getTimestamp() &&
-            desc.getMimeTypeCount() == 1 &&
-            (desc.hasMimeType(ClipDescription.MIMETYPE_TEXT_PLAIN) ||
-                desc.hasMimeType(ClipDescription.MIMETYPE_TEXT_HTML))) {
+                lastClipboardTimestamp < desc.getTimestamp() &&
+                desc.getMimeTypeCount() == 1 &&
+                (desc.hasMimeType(ClipDescription.MIMETYPE_TEXT_PLAIN) ||
+                        desc.hasMimeType(ClipDescription.MIMETYPE_TEXT_HTML))) {
             lastClipboardTimestamp = desc.getTimestamp();
             sendClipboardAnnounce();
             Log.d("CLIP", "sending clipboard announce");
         }
     }
 
-//    @Override
-//    public void onWindowFocusChanged(boolean hasFocus) {
-//        super.onWindowFocusChanged(hasFocus);
-//
-//        requestFocus();
-//
-//        if (clipboardSyncEnabled && hasFocus) {
-//            clipboard.addPrimaryClipChangedListener(clipboardListener);
-//            checkForClipboardChange();
-//        } else
-//            clipboard.removePrimaryClipChangedListener(clipboardListener);
-//
-//        TouchInputHandler.refreshInputDevices();
-//    }
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+
+        requestFocus();
+
+        if (clipboardSyncEnabled && hasFocus) {
+            clipboard.addPrimaryClipChangedListener(clipboardListener);
+            checkForClipboardChange();
+        } else
+            clipboard.removePrimaryClipChangedListener(clipboardListener);
+
+        TouchInputHandler.refreshInputDevices();
+    }
 
     @Override
     public InputConnection onCreateInputConnection(EditorInfo outAttrs) {
@@ -947,59 +777,43 @@ public boolean onGenericMotionEvent(MotionEvent event) {
         if (!commitedText)
             return;
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
-            mIMM.invalidateInput(this);
-        else
-            mIMM.restartInput(this);
+        postDelayed(() -> {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
+                mIMM.invalidateInput(this);
+            else
+                mIMM.restartInput(this);
+        }, 10);
     }
 
-
-    public void injectPointerMove(int x, int y) {
-        pointer.moveTo(x, y);
-    }
-
-    public void injectPointerMoveDelta(int dx, int dy) {
-        pointer.moveDelta(dx, dy);
-    }
-
-    public void injectPointerButtonPress(Pointer.Button buttonCode) {
-        pointer.setButton(buttonCode, true);
-    }
-
-    public void injectPointerButtonRelease(Pointer.Button buttonCode) {
-        pointer.setButton(buttonCode, false);
-    }
-
-    public void injectKeyPress(XKeycode xKeycode) {
-        injectKeyPress(xKeycode, 0);
-    }
-
-    public void injectKeyPress(XKeycode xKeycode, int keysym) {
-        keyboard.setKeyPress(xKeycode.id, keysym);
-    }
-
-    public void injectKeyRelease(XKeycode xKeycode) {
-        keyboard.setKeyRelease(xKeycode.id);
-    }
-
-    public void injectText(String text) {
-        if (text.isEmpty()) {
-            return;
-        }
-        sendTextEvent(text.getBytes());
-    }
-
-    @FastNative
-    private native void nativeInit();
+    @FastNative private native void nativeInit();
     @FastNative private native void surfaceChanged(Surface surface);
+    @FastNative private native void setFiltering(int filtering);
     @FastNative static native void connect(int fd);
-    @CriticalNative
-    static native boolean connected();
+    @CriticalNative static native boolean connected();
     @FastNative static native void startLogcat(int fd);
     @FastNative static native void setClipboardSyncEnabled(boolean enabled, boolean ignored);
     @FastNative public native void sendClipboardAnnounce();
     @FastNative public native void sendClipboardEvent(byte[] text);
     @FastNative static native void sendWindowChange(int width, int height, int framerate, String name);
+    @FastNative static native void setViewport(int x, int y, int width, int height, int expectedWidth, int expectedHeight, int hiddenBottom);
+    @FastNative private static native void setRendererZoom(int percent);
+
+    public void adjustRendererZoom(int delta) {
+        rendererZoom = MathUtils.clamp(rendererZoom + delta, 100, 400);
+        setRendererZoom(rendererZoom);
+    }
+
+    public void resetRendererZoom() {
+        rendererZoom = 100;
+        setRendererZoom(rendererZoom);
+    }
+
+    public void onPictureInPictureModeChanged(boolean isInPictureInPictureMode) {
+        freezeDimensions(isInPictureInPictureMode);
+        // Zooming a floating window makes no sense, but the zoom is restored along with the size.
+        setRendererZoom(isInPictureInPictureMode ? 100 : rendererZoom);
+    }
+
     @FastNative public native void sendMouseEvent(float x, float y, int whichButton, boolean buttonDown, boolean relative);
     @FastNative public native void sendTouchEvent(int action, int id, int x, int y);
     @FastNative public native void sendStylusEvent(float x, float y, int pressure, int tiltX, int tiltY, int orientation, int buttons, boolean eraser, boolean mouseMode);
@@ -1017,4 +831,3 @@ public boolean onGenericMotionEvent(MotionEvent event) {
         System.loadLibrary("Xlorie");
     }
 }
-

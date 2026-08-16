@@ -1,7 +1,6 @@
 package com.termux.x11;
 
 import static android.system.Os.getuid;
-import static android.system.Os.getenv;
 
 import android.annotation.SuppressLint;
 import android.app.IActivityManager;
@@ -55,9 +54,6 @@ public class CmdEntryPoint extends ICmdEntryInterface.Stub {
 
     @SuppressLint({"WrongConstant", "PrivateApi"})
     private Intent createIntent() {
-        String targetPackage = getenv("TERMUX_X11_OVERRIDE_PACKAGE");
-        if (targetPackage == null)
-            targetPackage = "com.xodos";
         // We should not care about multiple instances, it should be called only by `Termux:X11` app
         // which is single instance...
         Bundle bundle = new Bundle();
@@ -65,7 +61,7 @@ public class CmdEntryPoint extends ICmdEntryInterface.Stub {
 
         Intent intent = new Intent(ACTION_START);
         intent.putExtra(null, bundle);
-        intent.setPackage(targetPackage);
+        intent.setPackage(BuildConfig.APPLICATION_ID);
 
         if (getuid() == 0 || getuid() == 2000)
             intent.setFlags(0x00400000 /* FLAG_RECEIVER_FROM_SHELL */);
@@ -127,15 +123,11 @@ public class CmdEntryPoint extends ICmdEntryInterface.Stub {
     // In some cases Android Activity part can not connect opened port.
     // In this case opened port works like a lock file.
     private void sendBroadcastDelayed() {
-    try {
         if (!connected())
             sendBroadcast(intent);
-    } catch (Exception e) {
-        // silently ignore, prevents spam logs
-    }
 
-    handler.postDelayed(this::sendBroadcastDelayed, 1000);
-}
+        handler.postDelayed(this::sendBroadcastDelayed, 1000);
+    }
 
     void spawnListeningThread() {
         new Thread(this::listenForConnections).start();
@@ -193,8 +185,7 @@ public class CmdEntryPoint extends ICmdEntryInterface.Stub {
         String libPath = res != null ? res.getFile().replace("file:", "") : null;
         if (libPath != null) {
             try {
-                // System.load(libPath);
-                System.loadLibrary("Xlorie");
+                System.load(libPath);
             } catch (Exception e) {
                 Log.e("CmdEntryPoint", "Failed to dlopen " + libPath, e);
                 System.err.println("Failed to load native library. Did you install the right apk? Try the universal one.");
@@ -209,4 +200,3 @@ public class CmdEntryPoint extends ICmdEntryInterface.Stub {
         }
     }
 }
-

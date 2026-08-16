@@ -1,4 +1,4 @@
-<!DOCTYPE resources [<!ENTITY TERMUX_PACKAGE_NAME "com.termux"><!ENTITY TERMUX_APP_NAME "XoDos"><!ENTITY TERMUX_DISPLAY_APP_NAME "Termux:X11">]>
+<!DOCTYPE resources [<!ENTITY TERMUX_PACKAGE_NAME "com.termux"><!ENTITY TERMUX_APP_NAME "Termux:X11"><!ENTITY TERMUX_DISPLAY_APP_NAME "Termux:X11">]>
 <resources>
     <string name="app_name">&TERMUX_DISPLAY_APP_NAME; </string>
     <string name="plugin_info">&TERMUX_DISPLAY_APP_NAME; est une application plugin pour l\'application &TERMUX_APP_NAME;.
@@ -140,7 +140,7 @@
     <string name="select_controller">Sélectionner le contrôleur🎮</string>
     <string name="select_controller_summary">Pour utiliser la fonction de saisie, activez préférences->clavier->code de balayage</string>
     <string name="progress_manager">Gestionnaire de progression📊</string>
-    <string name="install_x11_server_bridge">Installer XoDos x11</string>
+    <string name="install_x11_server_bridge">Installer x11</string>
     <string name="stop_desktop">Arrêter le bureau🚫</string>
 <!--    <string name="stretch_to_fit_display">Étirer pour s\'adapter à l\'écran</string>-->
 <!--    <string name="reseed_screen">Réinitialiser l\'écran pendant que le clavier logiciel est ouvert</string>-->

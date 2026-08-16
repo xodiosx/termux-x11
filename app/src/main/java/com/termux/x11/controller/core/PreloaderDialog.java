@@ -7,8 +7,6 @@ import android.view.WindowManager;
 import android.widget.TextView;
 
 import com.termux.x11.R;
-
-
 public class PreloaderDialog {
     private final Activity activity;
     private Dialog dialog;

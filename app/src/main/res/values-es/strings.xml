@@ -1,4 +1,4 @@
-<!DOCTYPE resources [<!ENTITY TERMUX_PACKAGE_NAME "com.termux"><!ENTITY TERMUX_APP_NAME "XoDos"><!ENTITY TERMUX_DISPLAY_APP_NAME "Termux:X11">]>
+<!DOCTYPE resources [<!ENTITY TERMUX_PACKAGE_NAME "com.termux"><!ENTITY TERMUX_APP_NAME "Termux:X11"><!ENTITY TERMUX_DISPLAY_APP_NAME "Termux:X11">]>
 <resources>
     <string name="app_name">&TERMUX_DISPLAY_APP_NAME; </string>
     <string name="plugin_info">&TERMUX_DISPLAY_APP_NAME; es una aplicación complementaria para &TERMUX_APP_NAME;.
@@ -140,7 +140,7 @@
     <string name="select_controller">Seleccionar controlador🎮</string>
     <string name="select_controller_summary">Para usar la función de entrada, activa preferencias->teclado->código de escaneo</string>
     <string name="progress_manager">Gestor de progreso📊</string>
-    <string name="install_x11_server_bridge">Instalar XoDos x11</string>
+    <string name="install_x11_server_bridge">Instalar x11</string>
     <string name="stop_desktop">Detener escritorio🚫</string>
 <!--    <string name="stretch_to_fit_display">Estirar para ajustar a la pantalla</string>-->
 <!--    <string name="reseed_screen">Reajustar pantalla mientras el teclado suave está abierto</string>-->

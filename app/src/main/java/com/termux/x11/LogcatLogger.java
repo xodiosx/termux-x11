@@ -31,7 +31,7 @@ public class LogcatLogger {
                 if (Build.VERSION.SDK_INT >= 29) {
                     dir = new File(context.getExternalFilesDir(null), "logs");
                 } else {
-                    dir = new File(Environment.getExternalStorageDirectory(), "xodos/logs");
+                    dir = new File(Environment.getExternalStorageDirectory(), "x11/logs");
                 }
 
                 if (!dir.exists()) dir.mkdirs();

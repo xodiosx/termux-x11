@@ -31,7 +31,6 @@ import androidx.appcompat.app.AppCompatActivity;
 
 import com.google.android.material.tabs.TabLayout;
 import com.termux.x11.R;
-
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 

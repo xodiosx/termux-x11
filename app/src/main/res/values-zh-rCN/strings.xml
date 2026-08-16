@@ -1,4 +1,4 @@
-<!DOCTYPE resources [<!ENTITY TERMUX_PACKAGE_NAME "com.termux"><!ENTITY TERMUX_APP_NAME "XoDos"><!ENTITY TERMUX_DISPLAY_APP_NAME "Termux:X11">]>
+<!DOCTYPE resources [<!ENTITY TERMUX_PACKAGE_NAME "com.termux"><!ENTITY TERMUX_APP_NAME "Termux:X11"><!ENTITY TERMUX_DISPLAY_APP_NAME "Termux:X11">]>
 <resources>
     <string name="app_name">&TERMUX_DISPLAY_APP_NAME; </string>
     <string name="plugin_info">&TERMUX_DISPLAY_APP_NAME; 是 &TERMUX_APP_NAME; 应用的插件应用。
@@ -140,7 +140,7 @@
     <string name="select_controller">选择控制器🎮</string>
     <string name="select_controller_summary">要使用输入功能，请打开首选项->键盘->扫描码</string>
     <string name="progress_manager">进度管理器📊</string>
-    <string name="install_x11_server_bridge">安装 XoDos x11</string>
+    <string name="install_x11_server_bridge">安装 x11</string>
     <string name="stop_desktop">停止桌面🚫</string>
 <!--    <string name="stretch_to_fit_display">拉伸以适应显示</string>-->
 <!--    <string name="reseed_screen">软键盘打开时重新播种屏幕</string>-->

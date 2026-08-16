@@ -39,6 +39,8 @@
 
 #include "lorie.h"
 
+#define DRM_FORMAT_MOD_LINEAR 0
+
 extern void android_shmem_sysv_shm_force(uint8_t enable);
 
 #define unused __attribute__((unused))
@@ -69,17 +71,19 @@ typedef struct {
     struct lorie_shared_server_state* state;
     struct {
         Bool legacyDrawing;
-        uint8_t flip;
         uint32_t width, height;
         char name[1024];
         uint32_t framerate;
     } root;
 
     Bool dri3;
+    Bool gpuPresentDisabled;
 
     uint64_t vblank_interval;
     struct xorg_list vblank_queue;
     uint64_t current_msc;
+
+    uint64_t gpuCopySerialCounter;
 } lorieScreenInfo;
 
 ScreenPtr pScreenPtr;
@@ -93,6 +97,12 @@ static lorieScreenInfo lorieScreen = {
         .vblank_queue = { &lorieScreen.vblank_queue, &lorieScreen.vblank_queue },
 }, *pvfb = &lorieScreen;
 static char *xstartup = NULL;
+static char **xstartupArgv = NULL;
+
+// Owned by the activity process, handed to us over the connection socket. Points at a placeholder until
+// the first connection so callers don't need a NULL check.
+static pthread_cond_t rendererCondPlaceholder = PTHREAD_COND_INITIALIZER;
+static pthread_cond_t* volatile rendererCond = &rendererCondPlaceholder;
 
 typedef struct {
     LorieBuffer *buffer;
@@ -104,12 +114,34 @@ typedef struct {
 #define LORIE_PIXMAP_PRIV_FROM_PIXMAP(pixmap) (pixmap ? ((LoriePixmapPriv*) exaGetPixmapDriverPrivate(pixmap)) : NULL)
 #define LORIE_BUFFER_FROM_PIXMAP(pixmap) (pixmap ? ((LoriePixmapPriv*) exaGetPixmapDriverPrivate(pixmap))->buffer : NULL)
 
+static LorieBuffer *lorieEnsureGpuSampleable(PixmapPtr pixmap, int8_t type) {
+    LoriePixmapPriv *priv = LORIE_PIXMAP_PRIV_FROM_PIXMAP(pixmap);
+    const LorieBuffer_Desc *desc;
+    if (!priv || !priv->buffer || priv->mem)
+        return NULL;
+
+    desc = LorieBuffer_description(priv->buffer);
+    if (desc->type == LORIEBUFFER_REGULAR) {
+        LorieBuffer_convert(priv->buffer, type, AHARDWAREBUFFER_FORMAT_R8G8B8X8_UNORM);
+        if (desc->type != LORIEBUFFER_REGULAR) {
+            // LorieBuffer_convert does not report status but it does not let the type change in the case of error.
+            pScreenPtr->ModifyPixmapHeader(pixmap, 0, 0, 0, 0, desc->stride * 4, NULL);
+            LorieBuffer_lock(priv->buffer, &priv->locked);
+        }
+    }
+
+    return desc->type == type ? priv->buffer : NULL;
+}
+
+static Bool lorieServerDebugEnabled = FALSE;
+
 void OsVendorInit(void) {
     pthread_mutexattr_t mutex_attr;
-    pthread_condattr_t cond_attr;
 
     if (lorieScreen.stateFd != -1) // already initialized
         return;
+
+    lorieServerDebugEnabled = getenv("TERMUX_X11_DEBUG") != NULL;
 
     if (-1 == (lorieScreen.stateFd = LorieBuffer_createRegion("xserver", sizeof(*lorieScreen.state)))) {
         dprintf(2, "FATAL: Failed to allocate server state.\n");
@@ -126,10 +158,33 @@ void OsVendorInit(void) {
     pthread_mutexattr_settype(&mutex_attr, PTHREAD_MUTEX_RECURSIVE);
     pthread_mutex_init(&lorieScreen.state->lock, &mutex_attr);
     pthread_mutex_init(&lorieScreen.state->cursor.lock, &mutex_attr);
+}
 
-    pthread_condattr_init(&cond_attr);
-    pthread_condattr_setpshared(&cond_attr, PTHREAD_PROCESS_SHARED);
-    pthread_cond_init(&lorieScreen.state->cond, &cond_attr);
+// Queued from handleLorieEvents (input thread) to run on the main thread, i.e. the same thread that
+// signals rendererCond from lorieRedraw/lorieMoveCursor - so the swap and the unmap below can never race
+// a signal.
+static Bool lorieSetRendererWakeupCondWorkProc(__unused ClientPtr client, void* closure) {
+    int fd = (int) (intptr_t) closure;
+    pthread_cond_t* newCond = mmap(NULL, sizeof(pthread_cond_t), PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
+    close(fd); // mmap already keeps the region alive.
+    if (newCond == MAP_FAILED) {
+        log(ERROR, "Failed to map renderer wakeup cond var, keeping the old one");
+        return TRUE;
+    }
+
+    pthread_cond_t* old = rendererCond;
+    rendererCond = newCond;
+    pthread_cond_signal(newCond); // in case a signal was sent to `old` right before this swap
+
+    if (old != &rendererCondPlaceholder)
+        munmap(old, sizeof(pthread_cond_t));
+
+    return TRUE;
+}
+
+void lorieSetRendererWakeupCond(int fd) {
+    QueueWorkProc(lorieSetRendererWakeupCondWorkProc, NULL, (void*) (intptr_t) fd);
+    lorieWakeServer();
 }
 
 void lorieActivityConnected(void) {
@@ -155,7 +210,7 @@ void ddxGiveUp(unused enum ExitCode error) {
 }
 
 static void* ddxReadyThread(unused void* cookie) {
-    if (xstartup && serverGeneration == 1) {
+    if ((xstartup || xstartupArgv) && serverGeneration == 1) {
         pid_t pid = fork();
 
         if (!pid) {
@@ -168,6 +223,12 @@ static void* ddxReadyThread(unused void* cookie) {
             INHERIT_VAR(LD_LIBRARY_PATH)
             INHERIT_VAR(LD_PRELOAD)
 #undef INHERIT_VAR
+
+            if (xstartupArgv) {
+                execvp(xstartupArgv[0], xstartupArgv);
+                dprintf(2, "Failed to start command `%s`: %s\n", xstartupArgv[0], strerror(errno));
+                abort();
+            }
 
             execlp(xstartup, xstartup, NULL);
             execlp("sh", "sh", "-c", xstartup, NULL);
@@ -224,12 +285,14 @@ void ddxReady(void) {
     pScreenPtr->DisplayCursor(lorieMouse, pScreenPtr, rootCursor);
     if (NoListenAll)
         return;
-    if (xstartup && !strlen(xstartup)) // allow overriding $TERMUX_X11_XSTARTUP with empty xstartup arg
-        return;
-    if (!xstartup || !strlen(xstartup))
-        xstartup = getenv("TERMUX_X11_XSTARTUP");
-    if (!xstartup || !strlen(xstartup))
-        return;
+    if (!xstartupArgv) {
+        if (xstartup && !strlen(xstartup)) // allow overriding $TERMUX_X11_XSTARTUP with empty xstartup arg
+            return;
+        if (!xstartup || !strlen(xstartup))
+            xstartup = getenv("TERMUX_X11_XSTARTUP");
+        if (!xstartup || !strlen(xstartup))
+            return;
+    }
 
     pthread_t t;
     pthread_create(&t, NULL, ddxReadyThread, NULL);
@@ -250,19 +313,37 @@ void ddxInputThreadInit(void) {}
 #endif
 
 void ddxUseMsg(void) {
-    ErrorF("-xstartup \"command\"    start `command` after server startup\n");
+    ErrorF("-xstartup \"command\"\n");
+    ErrorF("-- command args...     start `command` after server startup\n");
     ErrorF("-legacy-drawing        use legacy drawing, without using AHardwareBuffers\n");
     ErrorF("-force-bgra            force flipping colours (RGBA->BGRA)\n");
     ErrorF("-disable-dri3          disabling DRI3 support (to let lavapipe work)\n");
     ErrorF("-force-sysvshm         force using SysV shm syscalls\n");
     ErrorF("-check-drawing         run server only able to draw some test image (for testing if rendering root window works or not),\n");
+    ErrorF("-disable-gpu-present   disable offloading Present copies to the GPU, always use the CPU path\n");
 }
 
 int ddxProcessArgument(unused int argc, unused char *argv[], unused int i) {
     if (strcmp(argv[i], "-xstartup") == 0) {  /* -xstartup "command" */
         CHECK_FOR_REQUIRED_ARGUMENTS(1);
+        if (xstartupArgv) {
+            UseMsg();
+            FatalError("-xstartup and -- are mutually exclusive\n");
+        }
         xstartup = argv[++i];
         return 2;
+    }
+
+    if (strcmp(argv[i], "--") == 0) {  /* -- command args...: everything after goes verbatim into xstartupArgv */
+        CHECK_FOR_REQUIRED_ARGUMENTS(1);
+        if (xstartup) {
+            UseMsg();
+            FatalError("-xstartup and -- are mutually exclusive\n");
+        }
+        int n = argc - i - 1;
+        xstartupArgv = calloc(n + 1, sizeof(char*)); /* argv passed to us isn't guaranteed NULL-terminated past argc */
+        memcpy(xstartupArgv, &argv[i + 1], n * sizeof(char*));
+        return argc - i;
     }
 
     if (strcmp(argv[i], "-legacy-drawing") == 0) {
@@ -270,10 +351,8 @@ int ddxProcessArgument(unused int argc, unused char *argv[], unused int i) {
         return 1;
     }
 
-    if (strcmp(argv[i], "-force-bgra") == 0) {
-        pvfb->root.flip = TRUE;
+    if (strcmp(argv[i], "-force-bgra") == 0)
         return 1;
-    }
 
     if (strcmp(argv[i], "-disable-dri3") == 0) {
         pvfb->dri3 = FALSE;
@@ -288,6 +367,11 @@ int ddxProcessArgument(unused int argc, unused char *argv[], unused int i) {
     if (strcmp(argv[i], "-check-drawing") == 0) {
         NoListenAll = TRUE;
         QueueWorkProc(drawSquares, NULL, NULL);
+        return 1;
+    }
+
+    if (strcmp(argv[i], "-disable-gpu-present") == 0) {
+        pvfb->gpuPresentDisabled = TRUE;
         return 1;
     }
 
@@ -326,7 +410,7 @@ static void lorieMoveCursor(unused DeviceIntPtr pDev, unused ScreenPtr pScr, int
     pvfb->state->cursor.moved = TRUE;
     // No need to explicitly lock the mutex, it will cause waiting for rendering to be finished.
     // We are simply signaling the renderer in the case if it sleeps.
-    pthread_cond_signal(&pvfb->state->cond);
+    pthread_cond_signal(rendererCond);
 }
 
 static void lorieConvertCursor(CursorPtr pCurs, uint32_t *data) {
@@ -440,17 +524,22 @@ static Bool lorieRedraw(__unused ClientPtr pClient, __unused void *closure) {
         // We do not explicitly lock the pvfb->state->lock here because we do not want to wait
         // for all drawing operations to be finished.
         // Renderer thread will check the `drawRequested` flag right before going to sleep.
-        pthread_cond_signal(&pvfb->state->cond);
+        pthread_cond_signal(rendererCond);
     }
 
     return TRUE;
 }
 
+static uint64_t gpuCopyAttempts = 0, gpuCopyOffloads = 0;
+
 static CARD32 lorieFramecounter(unused OsTimerPtr timer, unused CARD32 time, unused void *arg) {
-    if (pvfb->state->renderedFrames)
-        log(INFO, "%d frames in 5.0 seconds = %.1f FPS",
-            pvfb->state->renderedFrames, ((float) pvfb->state->renderedFrames) / 5);
+    if (pvfb->state->renderedFrames || gpuCopyAttempts)
+        log(INFO, gpuCopyAttempts ? "%d frames in 5.0 seconds = %.1f FPS, %llu/%llu present copies offloaded to GPU"
+                                   : "%d frames in 5.0 seconds = %.1f FPS",
+            pvfb->state->renderedFrames, ((float) pvfb->state->renderedFrames) / 5,
+            (unsigned long long) gpuCopyOffloads, (unsigned long long) gpuCopyAttempts);
     pvfb->state->renderedFrames = 0;
+    gpuCopyAttempts = gpuCopyOffloads = 0;
     return 5000;
 }
 
@@ -719,7 +808,7 @@ void InitOutput(ScreenInfo * screen_info, int argc, char **argv) {
     screen_info->bitmapBitOrder = BITMAP_BIT_ORDER;
     screen_info->numPixmapFormats = ARRAY_SIZE(depths);
 
-    rendererTestCapabilities(&pvfb->root.legacyDrawing, &pvfb->root.flip);
+    rendererTestCapabilities(&pvfb->root.legacyDrawing);
     xorgGlxCreateVendor();
     lorieInitClipboard();
 
@@ -777,6 +866,118 @@ static void loriePerformVblanks(void) {
     }
 }
 
+// Whether the renderer currently has a surface to draw into (e.g. false while the activity is
+// backgrounded). Unlike lorieConnectionAlive(), this can go false without the socket connection
+// itself dropping - the renderer process/thread stays up, it just has nothing to render into.
+bool lorieRendererAvailable(void) {
+    return pvfb->state->surfaceAvailable;
+}
+
+// Tries to offload a Present "copy" operation (present_execute_copy) to the renderer's GPU
+// context instead of doing a CPU CopyArea here. dst is whatever GetWindowPixmap(window) is - root
+// for a plain window, or a Composite-redirected window's own backing pixmap. Returns FALSE
+// (caller falls back to the regular CPU present_copy_region) whenever either buffer isn't
+// GPU-sampleable, or the deferred copy queue is currently full.
+Bool lorieTryScheduleGpuCopy(PixmapPtr pixmap, PixmapPtr dst, RegionPtr update, int16_t x_off, int16_t y_off,
+                              uint64_t *out_serial, void **out_dst_buffer) {
+    LorieBuffer *srcBuffer, *dstBuffer;
+    LoriePixmapPriv *priv;
+    const LorieBuffer_Desc *desc, *dstDesc;
+    LorieGpuCopyEntry *entry;
+    BoxRec fullBox;
+    BoxPtr box;
+    int numRects, i;
+    uint32_t writeIndex, readIndex;
+
+    if (pvfb->gpuPresentDisabled || pvfb->root.legacyDrawing) {
+        gpuCopyAttempts++;
+        return FALSE;
+    }
+
+    if (!lorieConnectionAlive() || !lorieRendererAvailable()) {
+        // No renderer to drain the queue, so fall back to CPU copy.
+        gpuCopyAttempts++;
+        return FALSE;
+    }
+
+    if (!(srcBuffer = lorieEnsureGpuSampleable(pixmap, LORIEBUFFER_AHARDWAREBUFFER)) ||
+        !(dstBuffer = lorieEnsureGpuSampleable(dst, LORIEBUFFER_AHARDWAREBUFFER))) {
+        gpuCopyAttempts++;
+        return FALSE;
+    }
+    priv = LORIE_PIXMAP_PRIV_FROM_PIXMAP(pixmap);
+    desc = LorieBuffer_description(srcBuffer);
+    dstDesc = LorieBuffer_description(dstBuffer);
+
+    if (update) {
+        numRects = RegionNumRects(update);
+        box = RegionRects(update);
+    } else {
+        fullBox = (BoxRec) { 0, 0, (short) pixmap->drawable.width, (short) pixmap->drawable.height };
+        numRects = 1;
+        box = &fullBox;
+    }
+
+    if (numRects <= 0 || numRects > LORIE_GPU_COPY_MAX_RECTS) {
+        gpuCopyAttempts++;
+        return FALSE;
+    }
+
+    writeIndex = pvfb->state->gpuCopyQueue.writeIndex;
+    readIndex = pvfb->state->gpuCopyQueue.readIndex;
+    if (writeIndex - readIndex >= LORIE_GPU_COPY_QUEUE_CAPACITY) {
+        gpuCopyAttempts++;
+        return FALSE;
+    }
+
+    // Make sure the renderer has (or will have) this texture. Idempotent if already registered.
+    lorieRegisterBuffer(srcBuffer);
+    // Extra reference: keeps the LorieBuffer struct alive on this side until lorieGpuCopyAck()
+    // releases it, independently from the X pixmap's own lifetime.
+    LorieBuffer_acquire(srcBuffer);
+    // Root already has its own lifecycle (recreated on resize, kept alive by pScreenPtr->devPrivate)
+    // - an extra reference here would outlive a resize and let the renderer keep finding a stale,
+    // already-destroyed root buffer. Redirected-window destinations have no such guarantee, so they
+    // still need registering and an extra reference.
+    Bool dstIsRoot = dst == pScreenPtr->devPrivate;
+    if (!dstIsRoot) {
+        lorieRegisterBuffer(dstBuffer);
+        LorieBuffer_acquire(dstBuffer);
+    }
+    *out_dst_buffer = dstIsRoot ? NULL : dstBuffer;
+
+    entry = &pvfb->state->gpuCopyQueue.entries[writeIndex % LORIE_GPU_COPY_QUEUE_CAPACITY];
+    entry->serial = ++pvfb->gpuCopySerialCounter;
+    entry->srcBufferId = desc->id;
+    entry->dstBufferId = dstDesc->id;
+    entry->xOff = x_off;
+    entry->yOff = y_off;
+    entry->numRects = (uint16_t) numRects;
+    for (i = 0; i < numRects; i++)
+        entry->rects[i] = (LorieGpuCopyRect) { box[i].x1, box[i].y1, box[i].x2, box[i].y2 };
+
+    __sync_synchronize(); // publish entry contents before the renderer can see the new writeIndex
+    pvfb->state->gpuCopyQueue.writeIndex = writeIndex + 1;
+    pthread_cond_signal(rendererCond);
+
+    *out_serial = entry->serial;
+    gpuCopyAttempts++;
+    gpuCopyOffloads++;
+    return TRUE;
+}
+
+Bool lorieGpuCopyIsDone(uint64_t serial) {
+    return pvfb->state->gpuCopyQueue.completedSerial >= serial;
+}
+
+void lorieGpuCopyAck(PixmapPtr pixmap, void *dst_buffer) {
+    LoriePixmapPriv *priv = LORIE_PIXMAP_PRIV_FROM_PIXMAP(pixmap);
+    if (priv && priv->buffer)
+        LorieBuffer_release(priv->buffer);
+    if (dst_buffer)
+        LorieBuffer_release((LorieBuffer *) dst_buffer);
+}
+
 Bool loriePresentFlip(__unused RRCrtcPtr crtc, __unused uint64_t event_id, __unused uint64_t target_msc, PixmapPtr pixmap, __unused Bool sync_flip) {
     LoriePixmapPriv* priv = (LoriePixmapPriv*) exaGetPixmapDriverPrivate(pixmap);
     if (!priv || !priv->buffer || priv->mem || pvfb->root.width != pixmap->drawable.width || pvfb->root.width != pixmap->drawable.height)
@@ -787,17 +988,8 @@ Bool loriePresentFlip(__unused RRCrtcPtr crtc, __unused uint64_t event_id, __unu
     if (desc->type == LORIEBUFFER_FD && priv->imported && !(forceFlip && strcmp(forceFlip, "1") == 0))
         return FALSE; // For some reason it does not work fine with turnip.
 
-    if (desc->type == LORIEBUFFER_REGULAR) {
-        // Regular buffers can not be shared to activity, we must explicitly convert LorieBuffer to FD or AHardwareBuffer
-        int8_t type = pvfb->root.legacyDrawing ? LORIEBUFFER_FD : LORIEBUFFER_AHARDWAREBUFFER;
-        int8_t format = pvfb->root.flip ? AHARDWAREBUFFER_FORMAT_R8G8B8X8_UNORM : AHARDWAREBUFFER_FORMAT_B8G8R8A8_UNORM;
-        LorieBuffer_convert(priv->buffer, type, format);
-        if (desc->type != LORIEBUFFER_REGULAR) {
-            // LorieBuffer_convert does not report status but it does not let the type change in the case of error.
-            pScreenPtr->ModifyPixmapHeader(pixmap, 0, 0, 0, 0, desc->stride * 4, NULL);
-            LorieBuffer_lock(priv->buffer, &priv->locked);
-        }
-    }
+    // Regular buffers can not be shared to activity, we must explicitly convert LorieBuffer to FD or AHardwareBuffer
+    lorieEnsureGpuSampleable(pixmap, pvfb->root.legacyDrawing ? LORIEBUFFER_FD : LORIEBUFFER_AHARDWAREBUFFER);
 
     if (desc->type != LORIEBUFFER_FD && desc->type != LORIEBUFFER_AHARDWAREBUFFER)
         return FALSE;
@@ -850,8 +1042,7 @@ void *lorieCreatePixmap(__unused ScreenPtr pScreen, int width, int height, __unu
         return priv;
 
     uint8_t type = usage_hint != CREATE_PIXMAP_USAGE_LORIEBUFFER_BACKED ? LORIEBUFFER_REGULAR : pvfb->root.legacyDrawing ? LORIEBUFFER_FD : LORIEBUFFER_AHARDWAREBUFFER;
-    uint8_t format = pvfb->root.flip ? AHARDWAREBUFFER_FORMAT_R8G8B8X8_UNORM : AHARDWAREBUFFER_FORMAT_B8G8R8A8_UNORM;
-    priv->buffer = LorieBuffer_allocate(width, height, format, type);
+    priv->buffer = LorieBuffer_allocate(width, height, AHARDWAREBUFFER_FORMAT_R8G8B8X8_UNORM, type);
     *new_fb_pitch = LorieBuffer_description(priv->buffer)->stride * 4;
 
     LorieBuffer_lock(priv->buffer, &priv->locked);
@@ -881,9 +1072,17 @@ Bool lorieModifyPixmapHeader(PixmapPtr pPix, __unused int w, __unused int h, __u
     return FALSE;
 }
 
+// Whether a CPU access to pPix could race a GPU write from the renderer, and so needs state->lock.
+static inline __always_inline Bool lorieNeedsGpuLock(PixmapPtr pPix, LoriePixmapPriv *priv, int index) {
+    if (pScreenPtr->GetScreenPixmap(pScreenPtr) == pPix)
+        return index == EXA_PREPARE_DEST || (!pvfb->gpuPresentDisabled && !pvfb->root.legacyDrawing);
+    return !pvfb->root.legacyDrawing && priv->buffer &&
+           LorieBuffer_description(priv->buffer)->type == LORIEBUFFER_AHARDWAREBUFFER;
+}
+
 Bool loriePrepareAccess(PixmapPtr pPix, int index) {
     LoriePixmapPriv *priv = exaGetPixmapDriverPrivate(pPix);
-    if (index == EXA_PREPARE_DEST && pScreenPtr->GetScreenPixmap(pScreenPtr) == pPix)
+    if (lorieNeedsGpuLock(pPix, priv, index))
         lorie_mutex_lock(&pvfb->state->lock, &pvfb->state->lockingPid);
 
     if (!priv->locked && !priv->mem) {
@@ -902,7 +1101,7 @@ Bool loriePrepareAccess(PixmapPtr pPix, int index) {
 
 void lorieFinishAccess(PixmapPtr pPix, int index) {
     LoriePixmapPriv *priv = exaGetPixmapDriverPrivate(pPix);
-    if (index == EXA_PREPARE_DEST && pScreenPtr->GetScreenPixmap(pScreenPtr) == pPix)
+    if (lorieNeedsGpuLock(pPix, priv, index))
         lorie_mutex_unlock(&pvfb->state->lock, &pvfb->state->lockingPid);
 
     if (!priv->wasLocked) {
@@ -935,7 +1134,7 @@ static PixmapPtr loriePixmapFromFds(ScreenPtr screen, CARD8 num_fds, const int *
 
     check(num_fds > 1, "DRI3: More than 1 fd");
     check(modifier != RAW_MMAPPABLE_FD && modifier != AHARDWAREBUFFER_SOCKET_FD && modifier != AHARDWAREBUFFER_FLIPPED_SOCKET_FD &&
-          modifier != DRM_FORMAT_MOD_INVALID, "DRI3: Modifier is not RAW_MMAPPABLE_FD or AHARDWAREBUFFER_SOCKET_FD");
+          modifier != DRM_FORMAT_MOD_INVALID && modifier != DRM_FORMAT_MOD_LINEAR, "DRI3: Modifier is not RAW_MMAPPABLE_FD or AHARDWAREBUFFER_SOCKET_FD");
 
     pixmap = screen->CreatePixmap(screen, 0, 0, depth, 0);
     check(!pixmap, "DRI3: failed to create pixmap");
@@ -945,9 +1144,11 @@ static PixmapPtr loriePixmapFromFds(ScreenPtr screen, CARD8 num_fds, const int *
 
     priv->imported = true;
 
-    if (modifier == DRM_FORMAT_MOD_INVALID || modifier == RAW_MMAPPABLE_FD) {
+    if (modifier == DRM_FORMAT_MOD_INVALID || modifier == DRM_FORMAT_MOD_LINEAR || modifier == RAW_MMAPPABLE_FD) {
         check(!(priv->buffer = LorieBuffer_wrapFileDescriptor(width, strides[0]/4, height, AHARDWAREBUFFER_FORMAT_B8G8R8A8_UNORM, fds[0], offsets[0])), "DRI3: LorieBuffer_wrapAHardwareBuffer failed.");
         screen->ModifyPixmapHeader(pixmap, width, height, 0, 0, strides[0], NULL);
+        if (lorieServerDebugEnabled)
+            log(INFO, "DRI3: imported raw fd, modifier %llu, %ux%u stride %u", (unsigned long long) modifier, width, height, strides[0]);
         return pixmap;
     }
 
@@ -973,6 +1174,8 @@ static PixmapPtr loriePixmapFromFds(ScreenPtr screen, CARD8 num_fds, const int *
         check(!(priv->buffer = LorieBuffer_wrapAHardwareBuffer(buffer)), "DRI3: LorieBuffer_wrapAHardwareBuffer failed.");
 
         screen->ModifyPixmapHeader(pixmap, desc.width, desc.height, 0, 0, desc.stride * 4, NULL);
+        if (lorieServerDebugEnabled)
+            log(INFO, "DRI3: imported AHardwareBuffer, modifier %llu, %ux%u stride %u", (unsigned long long) modifier, desc.width, desc.height, desc.stride);
     }
 
     return pixmap;
@@ -985,14 +1188,23 @@ static PixmapPtr loriePixmapFromFds(ScreenPtr screen, CARD8 num_fds, const int *
 }
 
 static int lorieGetFormats(__unused ScreenPtr screen, CARD32 *num_formats, CARD32 **formats) {
-    *num_formats = 0;
-    *formats = NULL;
+    static CARD32 format = DRM_FORMAT_ARGB8888;
+    *num_formats = 1;
+    *formats = &format;
     return TRUE;
 }
 
-static int lorieGetModifiers(__unused ScreenPtr screen, __unused uint32_t format, uint32_t *num_modifiers, uint64_t **modifiers) {
-    *num_modifiers = 0;
-    *modifiers = NULL;
+static int lorieGetModifiers(__unused ScreenPtr screen, uint32_t format, uint32_t *num_modifiers, uint64_t **modifiers) {
+    static uint64_t modifier = DRM_FORMAT_MOD_LINEAR;
+
+    if (format != DRM_FORMAT_ARGB8888 && format != DRM_FORMAT_XRGB8888) {
+        *num_modifiers = 0;
+        *modifiers = NULL;
+        return TRUE;
+    }
+
+    *num_modifiers = 1;
+    *modifiers = &modifier;
     return TRUE;
 }
 

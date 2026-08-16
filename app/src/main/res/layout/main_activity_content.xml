@@ -49,12 +49,12 @@
                 android:layout_height="match_parent">
                 
                 <ImageView
-                    android:id="@+id/x11_image"
-                    android:layout_width="260.0dip"
-                    android:layout_height="200.0dip"
-                    android:src="@drawable/x_icon"
-                    android:scaleType="fitCenter"
-                    android:contentDescription="X Logo" />
+                android:id="@+id/x11_image"
+                android:layout_width="130dp"
+                android:layout_height="130dp"
+                android:scaleType="fitCenter"
+                app:srcCompat="@drawable/ic_x11_icon"
+                android:contentDescription="X Logo" />
                     
                 <Space
                     android:layout_width="match_parent"
@@ -68,7 +68,7 @@
                     android:id="@+id/textView"
                     android:layout_width="match_parent"
  android:layout_height="wrap_content"
-                    android:text="By XOD M.Aleiwi" />
+                    android:text="forked by xodiosx M.Aleiwi" />
                     
                 <Space
                     android:layout_width="match_parent"
@@ -265,7 +265,7 @@
         
         <androidx.viewpager.widget.ViewPager
             android:layout_gravity="bottom|center"
-            android:id="@+id/display_terminal_toolbar_view_pager"
+            android:id="@+id/terminal_toolbar_view_pager"
             android:background="@android:color/black"
             android:visibility="gone"
             android:layout_width="match_parent"
@@ -287,7 +287,7 @@
         android:layout_height="match_parent"
         android:layout_gravity="start"
         android:orientation="vertical"
-        android:background="#1E1E1E"
+        android:background="?android:attr/colorBackground" 
         android:clickable="true"
         android:focusable="true"
         android:focusableInTouchMode="true">
@@ -323,7 +323,7 @@
             android:id="@+id/preferences_container"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:background="#1E1E1E"
+            android:background="?android:attr/colorBackground" 
             android:clickable="true"
             android:focusable="true"
             android:focusableInTouchMode="true"

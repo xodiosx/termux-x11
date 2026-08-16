@@ -3,6 +3,10 @@
 #include <linux/ashmem.h>
 #include <android/hardware_buffer.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define STATIC_INLINE static inline __always_inline
 
 #define AHARDWAREBUFFER_FORMAT_B8G8R8A8_UNORM 5 // Stands to HAL_PIXEL_FORMAT_BGRA_8888
@@ -164,6 +168,15 @@ void LorieBuffer_attachToGL(LorieBuffer* _Nullable buffer);
 void LorieBuffer_bindTexture(LorieBuffer* _Nullable buffer);
 
 /**
+ * Get the GL texture id the buffer is attached to (see LorieBuffer_attachToGL).
+ * Returns 0 if the buffer was not attached to GL yet.
+ *
+ * @param buffer
+ * @return
+ */
+unsigned int LorieBuffer_getGLTextureId(LorieBuffer* _Nullable buffer);
+
+/**
  * Get width of the buffer.
  *
  * @param buffer
@@ -225,3 +238,7 @@ LorieBuffer* _Nullable LorieBufferList_findById(struct xorg_list* _Nullable list
 
 int ancil_send_fd(int sock, int fd);
 int ancil_recv_fd(int sock);
+
+#ifdef __cplusplus
+}
+#endif

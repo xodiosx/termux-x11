@@ -1,6 +1,13 @@
-<!DOCTYPE resources [<!ENTITY TERMUX_PACKAGE_NAME "com.termux"><!ENTITY TERMUX_APP_NAME "XoDos"><!ENTITY TERMUX_X11_APP_NAME "XoDos"><!ENTITY TERMUX_DISPLAY_APP_NAME "Termux:X11">]>
+<!DOCTYPE resources [
+    <!ENTITY TERMUX_PACKAGE_NAME "com.termux">
+    <!ENTITY TERMUX_APP_NAME "Termux">
+    <!ENTITY TERMUX_X11_APP_NAME "Termux:X11">
+    <!ENTITY TERMUX_DISPLAY_APP_NAME "Termux:X11">
+    ]>
 <resources>
-    <string name="app_name">&TERMUX_DISPLAY_APP_NAME; </string>
+  <string name="lorie_app_name">Termux:X11</string>
+    <string name="app_name">&TERMUX_X11_APP_NAME;</string>
+
     <string name="plugin_info">&TERMUX_DISPLAY_APP_NAME; is a plugin app for the &TERMUX_APP_NAME;
         app.
         \n\nCheck &TERMUX_APP_NAME; app github %1$s and &TERMUX_DISPLAY_APP_NAME; app github %2$s for more info.</string>
@@ -27,14 +34,27 @@
         for more info.
     </string>
     <string name="action_grant_display_over_other_apps_permission">Grant Draw Over Apps Permission</string>
-
+    <string name="ignoreGamepadEvents">Ignore gamepad input events</string>
+    <string name="ignoreGamepadEvents_summary">Prevent gamepad and joystick events from being forwarded to X server</string>
+    <string name="pref_ignoreGamepadEvents">Ignore gamepad input events</string>
+    <string name="lpref_ignoreGamepadEvents_summary">Prevent gamepad and joystick events from being forwarded to X server</string>
+    
     <string name="action_already_granted">Already Granted</string>
     <string name="action_already_disabled">Already Disabled</string>
     <string name="not_connected">Not connected</string>
     <string name="help_button_text">   Help   </string>
     <string name="preferences_button_text">   Preferences   </string>
-    <string name="extra_keys_config_desc">Here you can set value of extra-keys variable like in Termux app (read <a href="http://wiki.termux.com/wiki/Touch_Keyboard#Extra_Keys_Row">this</a>) and more (e.g. META).</string>
-    <!--    preference-->
+   <string name="extra_keys_config_desc">Here you can set value of extra-keys variable like in Termux app (read <a href="http://wiki.termux.com/wiki/Touch_Keyboard#Extra_Keys_Row">this</a>) and more \n
+E.g. <b>META</b> for <i>META key</i>, \n
+<b>KEYBOARD</b> for <i>soft keyboard toggling key</i>, \n
+<b>PREFERENCES</b> for <i>preferences opening key</i>, \n
+<b>MOUSE_HELPER</b> for <i>mouse helper toggling key</i>, \n
+<b>STYLUS_HELPER</b> for <i>stylus click override overlay toggling key</i>, \n
+<b>ZOOM_IN</b> for <i>zoom in key</i>, \n
+<b>ZOOM_OUT</b> for <i>zoom out key</i>, \n
+<b>ZOOM_RESET</b> for <i>zoom reset key</i>, \n
+<b>EXIT</b> for <i>application exit key</i>.</string>
+       <!--    preference-->
     <string name="pref_main">Preferences</string>
     <string name="pref_output">Output🖥️</string>
     <string name="pref_pointer">Pointer🖱️</string>
@@ -125,71 +145,13 @@
     <string name="pref_summary_requiresIntercepting">Requires intercepting system shortcuts with Dex mode or with Accessibility service</string>
     <string name="pref_summary_requiresTrackpadAndNative">Requires "Touchscreen input mode" to be "Trackpad" and "Display resolution mode" to be not "native"</string>
 
-
-<!--    <string name="pref_main">Preferences</string>-->
-<!--    <string name="pref_output">Output</string>-->
-<!--    <string name="pref_pointer">Pointer</string>-->
-<!--    <string name="pref_kbd">Keyboard</string>-->
-<!--    <string name="pref_other">Other</string>-->
-<!--    <string name="pref_version">Version</string>-->
-<!--    <string name="pref_ekbar">Extra key bar preferences</string>-->
-<!--    <string name="pref_userActions">Response to user actions</string>-->
-
-<!--    <string name="output">Output</string>-->
-<!--    <string name="display_resolution_mode">Display resolution mode</string>-->
-<!--    <string name="display_scale">Display scale, %</string>-->
-<!--    <string name="display_resolution">Display resolution</string>-->
-<!--    <string name="display_resolution_summary">Example: 1280x1024</string>-->
     <string name="touch_sensitivity">Touch sensitivity, x300ms</string>
     <string name="open_keyboard">Open keyboard⌨️</string>
     <string name="select_controller">Select controller🎮</string>
     <string name="select_controller_summary">To use input feature, turn preference->keyboard->scan code on</string>
     <string name="progress_manager">Progress manager📊</string>
-    <string name="install_x11_server_bridge">Install XoDos x11</string>
+    <string name="install_x11_server_bridge">Install x11</string>
     <string name="stop_desktop">Stop desktop🚫</string>
-<!--    <string name="stretch_to_fit_display">Stretch to fit display</string>-->
-<!--    <string name="reseed_screen">Reseed screen while soft keyboard is  open</string>-->
-<!--    <string name="reseed_screen_summary">The screen size will be adjusted while Soft Keyboard is open.</string>-->
-<!--    <string name="pip_mode">PIP mode</string>-->
-<!--    <string name="pip_mode_summary">Show app in picture-in-picture mode when home button or recents button is pressed</string>-->
-<!--    <string name="fullscreen_on_device_display">Fullscreen on device display</string>-->
-<!--    <string name="fullscreen_on_device_display_summary">Toggles immersive mode in your device display</string>-->
-<!--    <string name="force_landscape_orientation">Force landscape orientation</string>-->
-<!--    <string name="ignore_cutout_operation">Ignore display cutout adjustment</string>-->
-<!--    <string name="ignore_cutout_operation_summary">Trun on this to get rid off display issue on some devices</string>-->
-<!--    <string name="hide_display_cutout">Hide display cutout (if any)</string>-->
-<!--    <string name="keep_screen_on">Keep Screen On</string>-->
-<!--    <string name="pointer">Pointer</string>-->
-<!--    <string name="touchscreen_input_mode">Touchscreen input mode</string>-->
-<!--    <string name="apply_display_scale_factor_to_touchpad">Apply display scale factor to touchpad</string>-->
-<!--    <string name="show_stylus_click_options">Show stylus click options</string>-->
-<!--    <string name="show_stylus_click_options_summary">Stylus touch override, left middle or right click (Only for the stylus)</string>-->
-<!--    <string name="show_mouse_click_helper_overlay">Show mouse click helper overlay</string>-->
-<!--    <string name="show_mouse_click_helper_overlay_summary">Onscreen mouse buttons usable with touchpad</string>-->
-<!--    <string name="capture_external_mouse_when_possible">Capture external mouse when  possible</string>-->
-<!--    <string name="capture_external_mouse_when_possible_summary">Intercept all hardware mouse events. Pointer is back to Android after pressing Escape key.</string>-->
-<!--    <string name="enable_tap_to_move_for_touchpads">Enable tap-to-move for touchpads</string>-->
-<!--    <string name="show_additional_keyboard">Show additional keyboard</string>-->
-<!--    <string name="show_additional_keyboard_summary">Show keyboard with additional keys.</string>-->
-<!--    <string name="hide_additional_keyboard_on_volume_down_key_press">Hide additional keyboard on  Volume Down key press</string>-->
-<!--    <string name="show_ime_with_external_keyboard">Show IME with external keyboard</string>-->
-<!--    <string name="show_ime_with_external_keyboard_summary">Show software keyboard while hardware  keyboard is connected. Requires WRITE_SECURE_SETTINGS permission.</string>-->
-<!--    <string name="prefer_scancodes_when_possible">Prefer scancodes when possible</string>-->
-<!--    <string name="prefer_scancodes_when_possible_summary">Let X server handle hardware keyboard layout (with DE settings or setxkbmap).</string>-->
-<!--    <string name="intercept_system_shortcuts">Intercept system shortcuts</string>-->
-<!--    <string name="intercept_system_shortcuts_summary">Samsung Dex only. Allows interception of-->
-<!--        &quot;Alt+F4&quot;, &quot;Meta+D&quot;, &quot;Meta+E&quot;, etc. </string>-->
-<!--    <string name="open_accessibility_settings">Open Accessibility settings.</string>-->
-<!--    <string name="open_accessibility_settings_summary">Enable Accessibility service for   intercepting system shortcuts manually.</string>-->
-<!--    <string name="requires_write_secure_settings">Enable Accessibility service for intercepting system shortcuts automatically.</string>-->
-<!--    <string name="requires_write_secure_settings_summary">Requires WRITE_SECURE_SETTINGS permission.</string>-->
-<!--    <string name="filter_out_intercepted">Filter out intercepted Win (Meta/Mod4) key.</string>-->
-<!--    <string name="filter_out_intercepted_summary">Allows you to use Dex shortcuts while intercepting.</string>-->
-<!--    <string name="extra_keys_config">Extra keys config</string>-->
-<!--    <string name="other">Other</string>-->
-<!--    <string name="automatic_uploading_clipboard">Automatic uploading clipboard to Android</string>-->
-<!--    <string name="request_notification_permission">Request notification permission</string>-->
-
 
     <string name="add_button">add key</string>
     <string name="launch_button_text">launch</string>
@@ -455,8 +417,7 @@
     <string name="notification_toggle_soft_keyboard">Toggle Keyboard</string>
     
     <!-- Add these if missing -->
-   
-    
+  
     <!-- New strings for drawer -->
     <string name="drawer_title">X11 Controls</string>
     <string name="drawer_subtitle">Termux X11 Desktop</string>
@@ -477,6 +438,14 @@
     <string name="reinstall_x11">Reinstall X11</string>
     <string name="stop_desktop_btn">Stop Desktop</string>
     <string name="exit_btn">Exit</string>
+<string name="pref_enable_hud">Enable HUD Overlay</string>
+<string name="pref_enable_hud_summary">Show system monitor overlay on X11</string>
 
 
+<string name="lorie_pref_main">Main</string>
+<string name="lorie_pref_output">Output</string>
+<string name="lorie_pref_pointer">Pointer</string>
+<string name="lorie_pref_kbd">Keyboard</string>
+<string name="lorie_pref_other">Other</string>
+<string name="lorie_pref_version">Version</string>
 </resources>

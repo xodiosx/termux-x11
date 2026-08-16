@@ -2,7 +2,7 @@ import org.gradle.api.artifacts.ProjectDependency
 
 apply plugin: 'com.android.library'
 apply plugin: 'maven-publish'
-apply from: 'version.gradle'
+//apply from: 'version.gradle'
 
 rootProject.subprojects.each { p -> if (p != project) project.evaluationDependsOn(p.path) }
 
@@ -26,13 +26,16 @@ android {
     namespace 'com.termux.x11'
     //noinspection GrDeprecatedAPIUsage
     compileSdkVersion 34
-    ndkVersion termuxX11NdkVersion
+    ndkVersion "29.0.14206865"
     defaultConfig {
         minSdkVersion 26
         targetSdkVersion 34
-        buildConfigField "String", "VERSION_NAME", "\"${termuxX11VersionName}\""
+        versionCode 15
+        def commit= 'git rev-parse --verify --short HEAD'.execute().text.trim()
+        def version = "1.03.01"
+        versionName "${version}-${commit.length()==1?"nongit":commit}-${(new Date()).format("dd.MM.yy")}"
+        buildConfigField "String", "VERSION_NAME", "\"${versionName}\""
         buildConfigField "String", "COMMIT", "\"" + ("git rev-parse HEAD\n".execute().getText().trim() ?: (System.getenv('CURRENT_COMMIT') ?: "NO_COMMIT")) + "\""
-        buildConfigField "String", "APPLICATION_ID", "\"${hostApplicationId}\""
 
         consumerProguardFiles 'proguard-rules.pro'
     }

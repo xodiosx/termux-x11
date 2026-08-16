@@ -1,5 +1,5 @@
 apply plugin: 'com.android.application'
-apply from: '../lorie/version.gradle'
+apply from: '../app/version.gradle'
 
 android {
     namespace 'com.termux.x11.app'
@@ -40,5 +40,5 @@ androidComponents {
 }
 
 dependencies {
-    implementation project(':lorie')
+    implementation project(':app')
 }

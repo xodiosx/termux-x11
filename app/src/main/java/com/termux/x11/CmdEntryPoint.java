@@ -31,7 +31,7 @@ public class CmdEntryPoint extends ICmdEntryInterface.Stub {
     public static final String ACTION_START = "com.termux.x11.CmdEntryPoint.ACTION_START";
     static final Handler handler;
     public static Context ctx;
-    private final Intent intent = createIntent();
+   // private final Intent intent = createIntent();
 
     /**
      * Command-line entry point.
@@ -45,12 +45,11 @@ public class CmdEntryPoint extends ICmdEntryInterface.Stub {
     }
 
     CmdEntryPoint(String[] args) {
-        if (!start(args))
-            System.exit(1);
+    if (!start(args))
+        System.exit(1);
 
-        spawnListeningThread();
-        sendBroadcastDelayed();
-    }
+    spawnListeningThread();
+}
 
     @SuppressLint({"WrongConstant", "PrivateApi"})
     private Intent createIntent() {

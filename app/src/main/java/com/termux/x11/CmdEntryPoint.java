@@ -2,6 +2,7 @@ package com.termux.x11;
 
 import android.annotation.SuppressLint;
 import android.content.Context;
+import android.content.Intent;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
@@ -17,6 +18,7 @@ import java.net.URL;
 @Keep
 @SuppressLint({"StaticFieldLeak", "UnsafeDynamicallyLoadedCode"})
 public class CmdEntryPoint extends ICmdEntryInterface.Stub {
+    public static final String ACTION_START = "com.termux.x11.CmdEntryPoint.ACTION_START";
     static final Handler handler;
     public static Context ctx;
 
@@ -36,6 +38,15 @@ public class CmdEntryPoint extends ICmdEntryInterface.Stub {
             System.exit(1);
 
         spawnListeningThread();
+    }
+
+    /**
+     * Stub for compatibility with classes that still call sendBroadcast.
+     * In headless mode we do not send any broadcast; the X server runs
+     * without the separate viewer Activity.
+     */
+    static void sendBroadcast(Intent intent) {
+        // Intentionally empty
     }
 
     void spawnListeningThread() {

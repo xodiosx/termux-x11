@@ -10,19 +10,14 @@ import android.content.pm.ServiceInfo;
 import android.os.Build;
 import android.os.IBinder;
 import android.os.Looper;
+import android.system.Os;
 import android.util.Log;
 
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
 
 import com.termux.x11.R;
-import com.termux.x11.X11Runtime;
 
-/**
- * Upstream-style separation: [CmdEntryPoint] runs in {@code :x11}, like {@code app_process} with a
- * dedicated Looper, not in the same process as the shell / Lorie [android.view.Surface] activity.
- * This avoids blocking the app UI / native re-entrancy (see project ANR traces in X11Runtime).
- */
 public final class X11ServerService extends Service {
     private static final String TAG = "X11Server";
     private static final String NOTIF_CH = "xodos2_x11_cmd";
@@ -71,11 +66,11 @@ public final class X11ServerService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         startAsForeground();
-        startCmdEntryInBackgroundIfNeeded();
+        startCmdEntryInBackgroundIfNeeded(intent);
         return START_STICKY;
     }
 
-    private void startCmdEntryInBackgroundIfNeeded() {
+    private void startCmdEntryInBackgroundIfNeeded(final Intent intent) {
         final Application a = getApplication();
         synchronized (lock) {
             if (cmdThreadRunning) return;
@@ -83,8 +78,21 @@ public final class X11ServerService extends Service {
         }
         new Thread(() -> {
             try {
-                // TMPDIR, XKB unpack, etc. — may take seconds; not on the main / UI process.
-                X11Runtime.applyLorieProcessEnvForX11ServerProcess(a);
+                // Read environment variables from intent extras (if provided)
+                String tmpdir = intent != null ? intent.getStringExtra("tmpdir") : null;
+                String xkb = intent != null ? intent.getStringExtra("xkb") : null;
+
+                if (tmpdir != null) {
+                    Os.setenv("TMPDIR", tmpdir, true);
+                }
+                if (xkb != null) {
+                    Os.setenv("XKB_CONFIG_ROOT", xkb, true);
+                }
+
+                // Additional env if needed
+                Os.setenv("TERMUX_X11_DEBUG", "1", true);
+                Os.setenv("TERMUX_X11_OVERRIDE_PACKAGE", getPackageName(), true);
+
                 Looper.prepare();
                 android.util.Log.i(TAG, "CmdEntryPoint.main(:0) starting in :x11");
                 CmdEntryPoint.main(new String[] {":0", "-ac"});

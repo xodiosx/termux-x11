@@ -2,7 +2,6 @@ package com.termux.x11;
 
 import android.annotation.SuppressLint;
 import android.content.Context;
-import android.content.Intent;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
@@ -18,7 +17,9 @@ import java.net.URL;
 @Keep
 @SuppressLint({"StaticFieldLeak", "UnsafeDynamicallyLoadedCode"})
 public class CmdEntryPoint extends ICmdEntryInterface.Stub {
+    // Needed by other classes for compilation; not used for broadcasting anymore.
     public static final String ACTION_START = "com.termux.x11.CmdEntryPoint.ACTION_START";
+
     static final Handler handler;
     public static Context ctx;
 
@@ -28,19 +29,17 @@ public class CmdEntryPoint extends ICmdEntryInterface.Stub {
         Looper.loop();
     }
 
-    CmdEntryPoint(String[] args) {
+    public CmdEntryPoint(String[] args) {
         if (!start(args))
             System.exit(1);
 
         spawnListeningThread();
+        // No broadcast – headless mode.
     }
 
-    /**
-     * Headless mode: no broadcast. The X11 viewer is launched manually
-     * from Flutter via launchX11Page().
-     */
-    static void sendBroadcast(Intent intent) {
-        // Intentionally empty – no automatic activity launch.
+    // Stub to satisfy other classes that still reference sendBroadcast.
+    static void sendBroadcast(android.content.Intent intent) {
+        // Intentionally empty
     }
 
     void spawnListeningThread() {

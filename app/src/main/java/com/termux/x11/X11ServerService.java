@@ -25,12 +25,11 @@ public final class X11ServerService extends Service {
     private static final Object lock = new Object();
     private static boolean cmdThreadRunning;
 
-    @Override
-    public void onCreate() {
-        super.onCreate();
-        startAsForeground();
-        startCmdEntryInBackgroundIfNeeded();
-    }
+  @Override
+public void onCreate() {
+    super.onCreate();
+    startAsForeground();
+}
 
     private void startAsForeground() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

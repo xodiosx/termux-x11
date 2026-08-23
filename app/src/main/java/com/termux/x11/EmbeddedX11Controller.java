@@ -126,8 +126,8 @@ public final class EmbeddedX11Controller {
 
             int vw = view.getWidth() > 0 ? view.getWidth() : surfaceWidth;
             int vh = view.getHeight() > 0 ? view.getHeight() : surfaceHeight;
-            renderData.imageWidth = vw;
-            renderData.imageHeight = vh;
+            renderData.screenWidth = vw;
+            renderData.screenHeight = vh;
             renderData.screenWidth = view.p.x;
             renderData.screenHeight = view.p.y;
             float sx = vw > 0 ? (float) view.p.x / (float) vw : 1f;

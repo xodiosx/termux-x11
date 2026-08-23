@@ -12,6 +12,7 @@ import android.os.IBinder;
 import android.os.Looper;
 import android.system.Os;
 import android.util.Log;
+import java.io.File;
 
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
@@ -70,39 +71,46 @@ public void onCreate() {
     }
 
     private void startCmdEntryInBackgroundIfNeeded(final Intent intent) {
-        final Application a = getApplication();
-        synchronized (lock) {
-            if (cmdThreadRunning) return;
-            cmdThreadRunning = true;
-        }
-        new Thread(() -> {
-            try {
-                // Read environment variables from intent extras (if provided)
-                String tmpdir = intent != null ? intent.getStringExtra("tmpdir") : null;
-                String xkb = intent != null ? intent.getStringExtra("xkb") : null;
-
-                if (tmpdir != null) {
-                    Os.setenv("TMPDIR", tmpdir, true);
-                }
-                if (xkb != null) {
-                    Os.setenv("XKB_CONFIG_ROOT", xkb, true);
-                }
-
-                // Additional env if needed
-                Os.setenv("TERMUX_X11_DEBUG", "1", true);
-                Os.setenv("TERMUX_X11_OVERRIDE_PACKAGE", getPackageName(), true);
-
-                Looper.prepare();
-                android.util.Log.i(TAG, "CmdEntryPoint.main(:0) starting in :x11");
-                CmdEntryPoint.main(new String[] {":0", "-ac"});
-            } catch (Throwable t) {
-                Log.e(TAG, "CmdEntryPoint.main", t);
-                synchronized (lock) {
-                    cmdThreadRunning = false;
-                }
-            }
-        }, "xodos2-CmdEntryPoint-:x11").start();
+    final Application a = getApplication();
+    synchronized (lock) {
+        if (cmdThreadRunning) return;
+        cmdThreadRunning = true;
     }
+    new Thread(() -> {
+        try {
+            // Determine TMPDIR: use extra if given, else create a default directory.
+            String tmpdir = (intent != null) ? intent.getStringExtra("tmpdir") : null;
+            if (tmpdir == null || tmpdir.isEmpty()) {
+                // Fallback to an app-specific temp directory.
+                tmpdir = new File(getFilesDir(), "usr/tmp").getAbsolutePath();
+            }
+            File tmpDirFile = new File(tmpdir);
+            if (!tmpDirFile.exists()) {
+                tmpDirFile.mkdirs();
+            }
+            Os.setenv("TMPDIR", tmpdir, true);
+
+            // XKB_CONFIG_ROOT (if provided)
+            String xkb = (intent != null) ? intent.getStringExtra("xkb") : null;
+            if (xkb != null && !xkb.isEmpty()) {
+                Os.setenv("XKB_CONFIG_ROOT", xkb, true);
+            }
+
+            // Additional environment (unchanged)
+            Os.setenv("TERMUX_X11_DEBUG", "1", true);
+            Os.setenv("TERMUX_X11_OVERRIDE_PACKAGE", getPackageName(), true);
+
+            Looper.prepare();
+            android.util.Log.i(TAG, "CmdEntryPoint.main(:0) starting in :x11");
+            CmdEntryPoint.main(new String[] {":0", "-ac"});
+        } catch (Throwable t) {
+            Log.e(TAG, "CmdEntryPoint.main", t);
+            synchronized (lock) {
+                cmdThreadRunning = false;
+            }
+        }
+    }, "xodos2-CmdEntryPoint-:x11").start();
+}
 
     @Nullable
     @Override

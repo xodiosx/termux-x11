@@ -678,18 +678,18 @@ public boolean dispatchTouchEvent(MotionEvent ev) {
         return prefs;
         }
          // XoDos ark bridge
-    android.app.Activity h = X11ActivityBridge.getHostActivity();
+   /* android.app.Activity h = X11ActivityBridge.getHostActivity();
     if (h != null)
-        return X11ActivityBridge.getOrCreatePrefs(h);
+        return X11ActivityBridge.getOrCreatePrefs(h);*/
     return null;
     }
 
     public static MainActivity getInstance() {
          // XoDos ark bridge 
-    android.app.Activity h = X11ActivityBridge.getHostActivity();
+ /*   android.app.Activity h = X11ActivityBridge.getHostActivity();
     if (h instanceof MainActivity) {
         return (MainActivity) h;
-    }
+    }*/
     return instance;
 }
 
@@ -752,8 +752,8 @@ lorieContentView = findViewById(R.id.id_display_window);
         LorieView lorieView = findViewById(R.id.lorieView);
         View lorieParent = (View) lorieView.getParent();
    //XoDos ark
-        X11ActivityBridge.setLorieView(lorieView);
-        X11ActivityBridge.setHostActivity(this);
+       // X11ActivityBridge.setLorieView(lorieView);
+    //    X11ActivityBridge.setHostActivity(this);
         
         
         mInputHandler = new TouchInputHandler(this, new InputEventSender(lorieView));
@@ -995,7 +995,7 @@ winHandler = new WinHandler(this);
         onReceiveConnection(getIntent());
         findViewById(android.R.id.content).addOnLayoutChangeListener((v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> makeSureHelpersAreVisibleAndInScreenBounds());
   // XoDos ark 
- X11ActivityBridge.onLorieViewReadyForConnect();
+// X11ActivityBridge.onLorieViewReadyForConnect();
       }
       
       private static void closeSoftKeyboard() {

@@ -516,7 +516,7 @@ protected boolean isSettingsActivity() {
             requireContext().sendBroadcast(new Intent(ACTION_PREFERENCES_CHANGED) {{
                 putExtra("key", key);
                 putExtra("fromBroadcast", true);
-                setPackage(requireContext().getPackageName());
+                setPackage("com.xodos");
             }});
 
             return true;
@@ -678,7 +678,7 @@ protected boolean isSettingsActivity() {
                         Intent intent0 = new Intent(ACTION_PREFERENCES_CHANGED);
                         intent0.putExtra("key", key);
                         intent0.putExtra("fromBroadcast", true);
-                        intent0.setPackage(context.getPackageName());
+                        intent0.setPackage("com.xodos");
                         context.sendBroadcast(intent0);
                     }
                     edit.commit();
@@ -729,7 +729,12 @@ protected boolean isSettingsActivity() {
 
             in.detachFd();
             bundle.putBinder(null, iface);
-            i.setPackage(BuildConfig.APPLICATION_ID);
+            String targetPackage = System.getenv("TERMUX_X11_OVERRIDE_PACKAGE");
+    if (targetPackage == null || targetPackage.isEmpty()) {
+        targetPackage = BuildConfig.APPLICATION_ID;
+    }
+    i.setPackage(targetPackage);
+          //  i.setPackage(BuildConfig.APPLICATION_ID);
             i.putExtra(null, bundle);
             if (getuid() == 0 || getuid() == 2000)
                 i.setFlags(0x00400000 /* FLAG_RECEIVER_FROM_SHELL */);

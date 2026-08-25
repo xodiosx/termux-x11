@@ -516,7 +516,7 @@ protected boolean isSettingsActivity() {
             requireContext().sendBroadcast(new Intent(ACTION_PREFERENCES_CHANGED) {{
                 putExtra("key", key);
                 putExtra("fromBroadcast", true);
-                setPackage("com.xodos");
+                setPackage(requireContext().getPackageName());
             }});
 
             return true;
@@ -678,7 +678,7 @@ protected boolean isSettingsActivity() {
                         Intent intent0 = new Intent(ACTION_PREFERENCES_CHANGED);
                         intent0.putExtra("key", key);
                         intent0.putExtra("fromBroadcast", true);
-                        intent0.setPackage("com.xodos");
+                        intent0.setPackage(context.getPackageName());
                         context.sendBroadcast(intent0);
                     }
                     edit.commit();

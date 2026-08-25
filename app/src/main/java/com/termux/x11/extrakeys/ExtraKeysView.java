@@ -609,7 +609,7 @@ public final class ExtraKeysView extends GridLayout {
                 id = R.drawable.ic_extra_key_keyboard;
                 break;
             case "ZOOM_IN":
-                id = R.drawable.ic_zoom_in;
+                id = R.drawable.ic_zoom_inx;
                 break;
             case "ZOOM_OUT":
                 id = R.drawable.ic_zoom_out;

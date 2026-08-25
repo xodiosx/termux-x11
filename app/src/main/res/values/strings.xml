@@ -5,7 +5,6 @@
     <!ENTITY TERMUX_DISPLAY_APP_NAME "Termux:X11">
     ]>
 <resources>
-<string name="lorie_notification_content_text">Termux:X11 is running</string>
   <string name="lorie_app_name">Termux:X11</string>
     <string name="app_name">&TERMUX_X11_APP_NAME;</string>
 

@@ -355,7 +355,7 @@ public boolean isWineRunning() {
             // Use intent to communicate with Termux app
             Intent intent = new Intent();
             intent.setAction("com.termux.action.INSTALL_X11");
-            intent.setPackage(requireContext().getPackageName());
+            intent.setPackage(this.getPackageName());
             try {
                 activity.startActivity(intent);
             } catch (Exception e) {

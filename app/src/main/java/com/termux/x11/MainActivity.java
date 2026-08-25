@@ -89,7 +89,6 @@ import android.os.Process;
 import java.util.concurrent.Executors;
 import android.graphics.Color;
 import com.termux.x11.utils.SamsungDexUtils;
-
 import com.termux.x11.R;
 
 
@@ -356,7 +355,7 @@ public boolean isWineRunning() {
             // Use intent to communicate with Termux app
             Intent intent = new Intent();
             intent.setAction("com.termux.action.INSTALL_X11");
-            intent.setPackage("com.xodos");
+            intent.setPackage(MainActivity.this.getPackageName());
             try {
                 activity.startActivity(intent);
             } catch (Exception e) {
@@ -473,7 +472,6 @@ public void stopDesktop() {
 private void startDebugMode() {
     // Start debug mode
     Toast.makeText(this, "Debug mode started", Toast.LENGTH_SHORT).show();
- //   
  LogcatLogger.stop();
  LogcatLogger.start(this);
 }
@@ -676,20 +674,12 @@ public boolean dispatchTouchEvent(MotionEvent ev) {
     public static Prefs getPrefs() {
       if (prefs != null) {
         return prefs;
-        }
-         // XoDos ark bridge
-    android.app.Activity h = X11ActivityBridge.getHostActivity();
-    if (h != null)
-        return X11ActivityBridge.getOrCreatePrefs(h);
+        }         
     return null;
     }
 
     public static MainActivity getInstance() {
-         // XoDos ark bridge 
-    android.app.Activity h = X11ActivityBridge.getHostActivity();
-    if (h instanceof MainActivity) {
-        return (MainActivity) h;
-    }
+
     return instance;
 }
 
@@ -703,7 +693,7 @@ public boolean dispatchTouchEvent(MotionEvent ev) {
               requestWindowFeature(Window.FEATURE_NO_TITLE);
   
           super.onCreate(savedInstanceState);
-
+//startDebugMode();
         SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(this);
         prefs = new Prefs(this);
      //  prefs = new Prefs(this.getApplicationContext());
@@ -751,10 +741,6 @@ lorieContentView = findViewById(R.id.id_display_window);
 
         LorieView lorieView = findViewById(R.id.lorieView);
         View lorieParent = (View) lorieView.getParent();
-   //XoDos ark
-        X11ActivityBridge.setLorieView(lorieView);
-        X11ActivityBridge.setHostActivity(this);
-        
         
         mInputHandler = new TouchInputHandler(this, new InputEventSender(lorieView));
         mLorieKeyListener = (v, k, e) -> {
@@ -965,8 +951,8 @@ lorieContentView = findViewById(R.id.id_display_window);
 
         ImeHeightProvider.assistActivity(this);
         mNotificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
-       // mNotification = buildNotification();
-       // mNotificationManager.notify(mNotificationId, mNotification);
+        mNotification = buildNotification();
+        mNotificationManager.notify(mNotificationId, mNotification);
 
         if (tryConnect()) {
             final View content = findViewById(android.R.id.content);
@@ -994,8 +980,6 @@ winHandler = new WinHandler(this);
         
         onReceiveConnection(getIntent());
         findViewById(android.R.id.content).addOnLayoutChangeListener((v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> makeSureHelpersAreVisibleAndInScreenBounds());
-  // XoDos ark 
- X11ActivityBridge.onLorieViewReadyForConnect();
       }
       
       private static void closeSoftKeyboard() {
@@ -1400,24 +1384,21 @@ private void setupInputController() {
 
         for (StatusBarNotification notification: mNotificationManager.getActiveNotifications())
             if (notification.getId() == mNotificationId) {
-              //  mNotification = buildNotification();
-                //mNotificationManager.notify(mNotificationId, mNotification);
+                mNotification = buildNotification();
+                mNotificationManager.notify(mNotificationId, mNotification);
             }
     }
 
     @Override
 protected void onStart() {
     super.onStart();
-    //com.termux.x11.X11Runtime.INSTANCE.setLorieInputRouteTopVisible(true);
-    startHudIfEnabled();   // start & bind if enabled
+      startHudIfEnabled();   // start & bind if enabled
 }
 
 
 @Override
 protected void onStop() {
-//com.termux.x11.X11Runtime.INSTANCE.setLorieInputRouteTopVisible(false);
-    super.onStop();
-  //  com.termux.x11.X11Runtime.INSTANCE.setLorieInputRouteTopVisible(false);
+   super.onStop();
     // Unbind but do NOT stop service – let it run in background
     if (isBound) {
         unbindService(hudConnection);
@@ -1428,9 +1409,8 @@ protected void onStop() {
     @Override
     public void onResume() {
         super.onResume();
-     //   com.termux.x11.X11Runtime.INSTANCE.setLorieInputRouteTopVisible(true);
-     //  mNotification = buildNotification();
-     //   mNotificationManager.notify(mNotificationId, mNotification);
+        mNotification = buildNotification();
+       mNotificationManager.notify(mNotificationId, mNotification);
 isResumed = true;
     if (isBound && hudService != null) {
         hudService.attachToActivity(this);
@@ -1442,8 +1422,7 @@ isResumed = true;
         @Override
     public void onPause() {
 inputMethodManager.hideSoftInputFromWindow(getWindow().getDecorView().getRootView().getWindowToken(), 0);
-//👽.INSTANCE.setLorieInputRouteTopVisible(false);
- 
+
         for (StatusBarNotification notification: mNotificationManager.getActiveNotifications())
             if (notification.getId() == mNotificationId)
                 mNotificationManager.cancel(mNotificationId);
@@ -1477,6 +1456,9 @@ protected boolean isSettingsActivity() {
 
     private void setTerminalToolbarView() {
         final ViewPager pager = getTerminalToolbarViewPager();
+            if (pager == null) {
+        return;
+    }
         ViewGroup parent = (ViewGroup) pager.getParent();
 
         boolean showNow = !isInPictureInPictureMode && LorieView.connected() && prefs.showAdditionalKbd.get() && prefs.additionalKbdVisible.get();
@@ -1558,7 +1540,7 @@ protected boolean isSettingsActivity() {
         NotificationCompat.Builder builder =  new NotificationCompat.Builder(this, getNotificationChannel(mNotificationManager))
                 .setContentTitle("Termux:X11")
                 .setSmallIcon(R.drawable.ic_x11_icon)
-                .setContentText(getResources().getText(R.string.lorie_notification_content_text))
+                .setContentText(getResources().getText(R.string.notification_content_text))
                 .setOngoing(true)
                 .setPriority(Notification.PRIORITY_MAX)
                 .setSilent(true)
@@ -1568,8 +1550,8 @@ protected boolean isSettingsActivity() {
     }
 
     private String getNotificationChannel(NotificationManager notificationManager){
-        String channelId = getResources().getString(R.string.lorie_app_name);
-        String channelName = getResources().getString(R.string.lorie_app_name);
+        String channelId = getResources().getString(R.string.app_name);
+        String channelName = getResources().getString(R.string.app_name);
         NotificationChannel channel = new NotificationChannel(channelId, channelName, NotificationManager.IMPORTANCE_HIGH);
         channel.setImportance(NotificationManager.IMPORTANCE_HIGH);
         channel.setLockscreenVisibility(Notification.VISIBILITY_SECRET);
